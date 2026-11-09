@@ -1,4 +1,4 @@
-# Build arm64 Android APK on Windows without Developer Mode (copies instead of symlinks).
+﻿# Build arm64 Android APK on Windows without Developer Mode (copies instead of symlinks).
 $ErrorActionPreference = "Stop"
 # GitHub Actions pwsh: rustc/tauri log to stderr; without this, *>&1 still throws NativeCommandError.
 if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
@@ -136,11 +136,14 @@ try {
         $env:CI = "true"
     }
     $env:CARGO_TERM_COLOR = "always"
-    # Frontend already built via npm run build above.
+    # Frontend already built via npm run build above (JSON via file — pwsh/cmd strip inline quotes).
+    $tauriBuildConfig = Join-Path $env:TEMP "custom-sda-tauri-android-build.json"
+    [System.IO.File]::WriteAllText($tauriBuildConfig, '{"build":{"beforeBuildCommand":""}}')
     $rustResult = Invoke-ProcessStream -FilePath $tauri -ArgumentList @(
         "android", "build", "--target", "aarch64", "--ci", "-v",
-        "--config", '{"build":{"beforeBuildCommand":""}}'
+        "--config", $tauriBuildConfig
     )
+    Remove-Item -LiteralPath $tauriBuildConfig -Force -ErrorAction SilentlyContinue
     $rustLog = $rustResult.Log
     $rustExit = $rustResult.ExitCode
 } finally {

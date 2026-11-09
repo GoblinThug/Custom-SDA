@@ -6,10 +6,10 @@
 
 | Событие | Действие |
 |---------|----------|
-| **Push в ветку `main`** | Desktop (Win/Linux/macOS) + Android → **автоматический Release** |
-| **Actions → Build release → Run workflow** | Выборочная сборка; Release **только** при push в `main` (не при ручном запуске) |
+| **Push в ветку `main`** | Win/Linux + **macOS (.dmg + iOS sim)** + Android → **Release** |
+| **Actions → Build release → Run workflow** | Выборочная сборка; Release **только** при push в `main` |
 
-**iOS в CI:** не запускается на push (экономит второй `macos-latest` и не блокирует Release). Симулятор — вручную: **Run workflow** → включить **iOS simulator .app**.
+**macOS job:** один `macos-latest` runner — сначала **.dmg**, затем **iOS simulator .app** (не два job’а в очереди).
 
 ## Обновления (Windows / Linux / macOS)
 
@@ -42,9 +42,9 @@ Android/iOS: этот канал не используется (магазин /
 |-----------|-----------|-------------------|----------|
 | **Windows** | `windows-latest` | `npm run build:exe` | `.exe`, NSIS/MSI в bundle |
 | **Linux** | `ubuntu-latest` | `npm run tauri build` | `.deb`, AppImage и т.д. |
-| **macOS** | `macos-latest` | `npm run tauri build` | `.dmg`, `.app` |
+| **macOS** | `macos-latest` (job `macos`) | `npm run tauri build` | `.dmg` → Release |
 | **Android** | `windows-latest` | `npm run build:apk` | `release/Custom SDA_<версия>_arm64-setup.apk` |
-| **iOS** | `macos-latest` | `npm run build:ios` | `.app` для симулятора (по умолчанию; не IPA) |
+| **iOS** | тот же job `macos` | `npm run tauri ios build` | `.app` симулятора → **Artifacts** (не в Release) |
 
 **Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-36` (Tauri 2 plugins требуют compileSdk ≥ 36). Rust **1.90+** (`rust-toolchain.toml`, biometric). Сборка `.so` — `tauri android build` + `scripts/build-apk.ps1`.
 
@@ -52,9 +52,8 @@ Android/iOS: этот канал не используется (магазин /
 
 GitHub-hosted `macos-latest` — общий пул с лимитом слотов. Сообщения вроде *«job was not acquired by Runner»* / *«capacity constraints»* — **перегруз инфраструктуры**, не ошибка проекта. Рекомендации:
 
-- на push только **один** macOS job (desktop `.dmg`), iOS — **workflow_dispatch**;
-- Release **не ждёт** iOS;
-- при сбое из‑за очереди: **Re-run failed jobs** позже или ручной workflow только с **build_ios**.
+- **один** macOS job на push (`.dmg` + iOS подряд);
+- при сбое из‑за очереди: **Re-run failed jobs** позже.
 
 **iOS CI:** `pod install` только при реальных `pod` в Podfile; пустой Podfile с `*_macOS` без таргета в Xcode больше не валит job.
 

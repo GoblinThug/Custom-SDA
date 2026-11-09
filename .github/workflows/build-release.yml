@@ -13,9 +13,9 @@ on:
         type: boolean
         default: true
       build_ios:
-        description: iOS simulator .app (macOS runner — queue can be long)
+        description: iOS simulator .app (same macOS runner as .dmg — one queue slot)
         type: boolean
-        default: false
+        default: true
   push:
     branches:
       - main
@@ -46,8 +46,6 @@ jobs:
             runner: windows-latest
           - id: linux
             runner: ubuntu-latest
-          - id: macos
-            runner: macos-latest
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -77,24 +75,7 @@ jobs:
       - name: Tauri build
         env:
           CI: true
-          APPLE_SIGNING_IDENTITY: ${{ matrix.id == 'macos' && '-' || '' }}
         run: npm run tauri build
-
-      - name: Ad-hoc codesign .app (macOS)
-        if: matrix.id == 'macos'
-        shell: bash
-        run: |
-          set +e
-          app=$(find target src-tauri/target -type d -name '*.app' 2>/dev/null | head -1)
-          set -e
-          if [[ -z "$app" ]]; then
-            echo "No .app bundle — skip codesign (stage step will collect dmg/exe artifacts if present)"
-            exit 0
-          fi
-          echo "Ad-hoc signing: $app"
-          if ! codesign --force --deep --sign - "$app"; then
-            echo "::warning::codesign failed; upload may still work for unsigned .app/dmg"
-          fi
 
       - name: Stage desktop artifacts
         shell: bash
@@ -183,11 +164,14 @@ jobs:
           path: release/*.apk
           if-no-files-found: error
 
-  ios:
-    # iOS is not on push: two macOS jobs (desktop + ios) exhaust arm64 runner capacity and block releases.
-    if: github.event_name == 'workflow_dispatch' && inputs.build_ios
+  # One macOS runner: .dmg + iOS simulator (avoids two jobs fighting for arm64 capacity).
+  macos:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+        (inputs.build_desktop || inputs.build_ios))
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -202,24 +186,80 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run build
+
+      - name: Tauri build (macOS desktop .dmg)
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_desktop)
+        env:
+          CI: true
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npm run tauri build
+
+      - name: Ad-hoc codesign macOS .app
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_desktop)
+        shell: bash
+        run: |
+          set +e
+          app=$(find target src-tauri/target -type d -name '*.app' 2>/dev/null | head -1)
+          set -e
+          if [[ -z "$app" ]]; then
+            echo "No .app bundle — skip codesign"
+            exit 0
+          fi
+          echo "Ad-hoc signing: $app"
+          codesign --force --deep --sign - "$app" || echo "::warning::codesign failed"
+
+      - name: Stage macOS desktop artifacts
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_desktop)
+        run: bash scripts/stage-desktop-artifacts.sh
+
+      - name: Upload macOS desktop artifact
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_desktop)
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-sda-desktop-macos
+          path: release-artifacts
+          if-no-files-found: error
+
       - name: Init iOS project
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_ios)
         run: npm run tauri ios init -- --ci
 
       - name: CocoaPods
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_ios)
         run: bash scripts/ios-pod-install.sh
 
-      - run: npm run build
-
       - name: Build iOS (simulator)
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_ios)
         run: npm run tauri ios build -- --target aarch64-sim
 
       - name: Stage iOS artifacts
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_ios)
         run: |
           mkdir -p release/ios-artifacts
           find src-tauri/gen/apple -name "*.app" -maxdepth 10 -exec cp -R {} release/ios-artifacts/ \; 2>/dev/null || true
           ls -laR release/ios-artifacts || true
 
       - name: Upload iOS simulator app
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.build_ios)
         uses: actions/upload-artifact@v4
         with:
           name: custom-sda-ios-simulator
@@ -228,7 +268,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    needs: [desktop, android]
+    needs: [desktop, android, macos]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
