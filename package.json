@@ -1,0 +1,43 @@
+{
+  "name": "custom-sda",
+  "private": true,
+  "version": "4.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "build:exe": "tauri build && node scripts/copy-release.mjs release",
+    "build:exe:debug": "tauri build --debug && node scripts/copy-release.mjs debug",
+    "build:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-apk.ps1",
+    "build:ios": "bash scripts/build-ios.sh",
+    "build:ios:device": "bash scripts/build-ios.sh --",
+    "build:ios:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-ios.ps1",
+    "icon:all": "tauri icon public/icon.png && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-android-icons.ps1"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.3.1",
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
+    "@fortawesome/react-fontawesome": "^3.5.0",
+    "@solar-icons/react": "^2.3.5",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-deep-link": "^2.6.3",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-os": "^2.4.0",
+    "html5-qrcode": "^2.3.8",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "~5.8.3",
+    "vite": "^8.0.16"
+  }
+}

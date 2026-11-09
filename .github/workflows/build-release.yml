@@ -1,0 +1,197 @@
+# Multi-platform release build — see .github/CI-PIPELINE.md for full settings.
+name: Build release (all platforms)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_desktop:
+        description: Windows + Linux + macOS desktop
+        type: boolean
+        default: true
+      build_android:
+        description: Android arm64 APK
+        type: boolean
+        default: true
+      build_ios:
+        description: iOS simulator .app
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  ANDROID_NDK_VERSION: "26.1.10909125"
+  JAVA_VERSION: "17"
+
+jobs:
+  desktop:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_desktop)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: windows
+            runner: windows-latest
+          - id: linux
+            runner: ubuntu-latest
+          - id: macos
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux system dependencies
+        if: matrix.id == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libayatana-appindicator3-dev
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Tauri build
+        run: npm run tauri build
+
+      - name: Stage desktop artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          if [ -d src-tauri/target/release/bundle ]; then
+            cp -R src-tauri/target/release/bundle/* release-artifacts/ 2>/dev/null || true
+          fi
+          if [ -d src-tauri/target/release ]; then
+            find src-tauri/target/release -maxdepth 1 \( -name "*.exe" -o -name "custom-sda" \) -exec cp {} release-artifacts/ \; 2>/dev/null || true
+          fi
+          ls -laR release-artifacts || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-sda-desktop-${{ matrix.id }}
+          path: release-artifacts/**
+          if-no-files-found: error
+
+  android:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_android)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Environment (Android)
+        shell: pwsh
+        run: |
+          echo "ANDROID_HOME=$env:ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT"
+          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}"
+          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $env:GITHUB_ENV
+
+      - run: npm ci
+
+      - name: Init Android project if missing
+        shell: pwsh
+        run: |
+          if (-not (Test-Path src-tauri/gen/android)) {
+            npm run tauri android init -- --ci
+          }
+
+      - name: Build signed APK
+        run: npm run build:apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-sda-android-arm64
+          path: release/*.apk
+          if-no-files-found: error
+
+  ios:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_ios)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - run: npm ci
+
+      - name: Init iOS project
+        run: npm run tauri ios init -- --ci
+
+      - name: CocoaPods
+        run: |
+          cd src-tauri/gen/apple && pod install
+
+      - run: npm run build
+
+      - name: Build iOS (simulator)
+        run: npm run tauri ios build -- --target aarch64-sim
+
+      - name: Stage iOS artifacts
+        run: |
+          mkdir -p release/ios-artifacts
+          find src-tauri/gen/apple -name "*.app" -maxdepth 10 -exec cp -R {} release/ios-artifacts/ \; 2>/dev/null || true
+          ls -laR release/ios-artifacts || true
+
+      - name: Upload iOS simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-sda-ios-simulator
+          path: release/ios-artifacts/**
+          if-no-files-found: warn

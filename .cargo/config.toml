@@ -1,0 +1,5 @@
+# Cargo artifacts live in <project>/target (not AppData).
+# If Windows Smart App Control blocks build-scripts under Desktop, temporarily use:
+#   $env:CARGO_TARGET_DIR = "$env:LOCALAPPDATA\custom-sda-cargo-target"
+[build]
+target-dir = "target"
