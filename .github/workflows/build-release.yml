@@ -13,9 +13,9 @@ on:
         type: boolean
         default: true
       build_ios:
-        description: iOS simulator .app
+        description: iOS simulator .app (macOS runner — queue can be long)
         type: boolean
-        default: true
+        default: false
   push:
     branches:
       - main
@@ -146,6 +146,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache (Android)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> ../target
+          shared-key: android-aarch64
+          cache-targets: aarch64-linux-android
+
       - name: Environment (Android)
         shell: pwsh
         run: |
@@ -176,9 +184,8 @@ jobs:
           if-no-files-found: error
 
   ios:
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.build_ios)
+    # iOS is not on push: two macOS jobs (desktop + ios) exhaust arm64 runner capacity and block releases.
+    if: github.event_name == 'workflow_dispatch' && inputs.build_ios
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
@@ -221,7 +228,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    needs: [desktop, android, ios]
+    needs: [desktop, android]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15

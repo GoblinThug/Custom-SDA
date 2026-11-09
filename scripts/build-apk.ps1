@@ -6,25 +6,20 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction Sile
 }
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
-function Invoke-External {
+function Invoke-ProcessStream {
     param(
         [Parameter(Mandatory)][string]$FilePath,
-        [string[]]$ArgumentList = @()
+        [Parameter(Mandatory)][string[]]$ArgumentList
     )
-    $argText = ($ArgumentList | ForEach-Object {
-        if ($_ -match '\s') { "`"$_`"" } else { $_ }
-    }) -join " "
-    $cmd = "`"$FilePath`" $argText".Trim()
-    $logFile = Join-Path $env:TEMP ("custom-sda-exec-{0}.log" -f [guid]::NewGuid().ToString("n"))
-    $exit = 0
-    try {
-        & cmd.exe /c "$cmd > `"$logFile`" 2>&1"
-        $exit = $LASTEXITCODE
-        $log = if (Test-Path $logFile) { Get-Content -LiteralPath $logFile -Raw } else { "" }
-    } finally {
-        Remove-Item -LiteralPath $logFile -Force -ErrorAction SilentlyContinue
+    $log = [System.Collections.Generic.List[string]]::new()
+    & $FilePath @ArgumentList 2>&1 | ForEach-Object {
+        $text = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.ToString() } else { "$_" }
+        Write-Host $text
+        [void]$log.Add($text)
     }
-    return @{ ExitCode = $exit; Log = $log }
+    $exit = $LASTEXITCODE
+    if ($null -eq $exit) { $exit = 0 }
+    return @{ ExitCode = $exit; Log = ($log -join [Environment]::NewLine) }
 }
 
 function Copy-JniWithRetry {
@@ -132,6 +127,7 @@ try {
 
     # Compiles libcustom_sda_lib.so (--apk is skipped; Gradle runs below and avoids jniLibs lock on CI).
     Write-Host "Building Rust for aarch64-linux-android (release)..."
+    Write-Host "Note: first CI compile can take 20-45 min; you should see Compiling lines below."
     $tauri = Join-Path $root "node_modules\.bin\tauri.cmd"
     if (-not (Test-Path $tauri)) {
         $tauri = Join-Path $root "node_modules\.bin\tauri"
@@ -139,14 +135,14 @@ try {
     if (-not $env:CI) {
         $env:CI = "true"
     }
-    $rustResult = Invoke-External -FilePath $tauri -ArgumentList @(
-        "android", "build", "--target", "aarch64", "--ci"
+    $env:CARGO_TERM_COLOR = "always"
+    # Frontend already built via npm run build above.
+    $rustResult = Invoke-ProcessStream -FilePath $tauri -ArgumentList @(
+        "android", "build", "--target", "aarch64", "--ci", "-v",
+        "--config", '{"build":{"beforeBuildCommand":""}}'
     )
     $rustLog = $rustResult.Log
     $rustExit = $rustResult.ExitCode
-    if ($rustLog) {
-        Write-Host $rustLog
-    }
 } finally {
     Pop-Location
 }
@@ -179,14 +175,15 @@ Copy-Item -Force (Join-Path $root "src-tauri\tauri.conf.json") $assets
 $androidDir = Join-Path $root "src-tauri\gen\android"
 Push-Location $androidDir
 try {
+    Write-Host "Running Gradle assembleArm64Release (Rust prebuilt; jniLibs copied manually)..."
     $gradle = Join-Path $androidDir "gradlew.bat"
-    $gradleResult = Invoke-External -FilePath $gradle -ArgumentList @(
+    $gradleResult = Invoke-ProcessStream -FilePath $gradle -ArgumentList @(
         "assembleArm64Release",
         "-x", "rustBuildArm64Release",
-        "-x", "rustBuildUniversalRelease"
+        "-x", "rustBuildUniversalRelease",
+        "--console=plain"
     )
     if ($gradleResult.ExitCode -ne 0) {
-        if ($gradleResult.Log) { Write-Host $gradleResult.Log }
         throw "Gradle assembleArm64Release failed (exit $($gradleResult.ExitCode))."
     }
 } finally {

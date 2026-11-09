@@ -6,8 +6,10 @@
 
 | Событие | Действие |
 |---------|----------|
-| **Push в ветку `main`** | Сборка всех платформ → **автоматический Release** (тег `v` + версия из `package.json`) |
-| **Actions → Build release (all platforms) → Run workflow** | Только сборка; **Release не создаётся** |
+| **Push в ветку `main`** | Desktop (Win/Linux/macOS) + Android → **автоматический Release** |
+| **Actions → Build release → Run workflow** | Выборочная сборка; Release **только** при push в `main` (не при ручном запуске) |
+
+**iOS в CI:** не запускается на push (экономит второй `macos-latest` и не блокирует Release). Симулятор — вручную: **Run workflow** → включить **iOS simulator .app**.
 
 ## Обновления (Windows / Linux / macOS)
 
@@ -44,7 +46,15 @@ Android/iOS: этот канал не используется (магазин /
 | **Android** | `windows-latest` | `npm run build:apk` | `release/Custom SDA_<версия>_arm64-setup.apk` |
 | **iOS** | `macos-latest` | `npm run build:ios` | `.app` для симулятора (по умолчанию; не IPA) |
 
-**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-36` (Tauri 2 plugins требуют compileSdk ≥ 36). Rust **1.90+** (`rust-toolchain.toml`, biometric). Сборка `.so` — `tauri android android-studio-script` (см. `scripts/build-apk.ps1`).
+**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-36` (Tauri 2 plugins требуют compileSdk ≥ 36). Rust **1.90+** (`rust-toolchain.toml`, biometric). Сборка `.so` — `tauri android build` + `scripts/build-apk.ps1`.
+
+### Очередь macOS (arm64)
+
+GitHub-hosted `macos-latest` — общий пул с лимитом слотов. Сообщения вроде *«job was not acquired by Runner»* / *«capacity constraints»* — **перегруз инфраструктуры**, не ошибка проекта. Рекомендации:
+
+- на push только **один** macOS job (desktop `.dmg`), iOS — **workflow_dispatch**;
+- Release **не ждёт** iOS;
+- при сбое из‑за очереди: **Re-run failed jobs** позже или ручной workflow только с **build_ios**.
 
 **iOS CI:** `pod install` только при реальных `pod` в Podfile; пустой Podfile с `*_macOS` без таргета в Xcode больше не валит job.
 
