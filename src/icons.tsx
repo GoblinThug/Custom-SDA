@@ -6,6 +6,7 @@ import {
   faEye,
   faEyeSlash,
   faFileImport,
+  faFingerprint,
   faGear,
   faHouse,
   faKey,
@@ -77,6 +78,7 @@ export const IconEye = () => <FontAwesomeIcon icon={faEye} />;
 export const IconEyeSlash = () => <FontAwesomeIcon icon={faEyeSlash} />;
 export const IconLock = () => <FontAwesomeIcon icon={faLock} />;
 export const IconMobile = () => <FontAwesomeIcon icon={faMobileScreen} />;
+export const IconFingerprint = () => <FontAwesomeIcon icon={faFingerprint} />;
 export const IconImport = () => <FontAwesomeIcon icon={faFileImport} />;
 export const IconLogin = () => <FontAwesomeIcon icon={faArrowRightToBracket} />;
 

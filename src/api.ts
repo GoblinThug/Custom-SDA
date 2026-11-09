@@ -73,9 +73,10 @@ export const api = {
   vaultWipe: () => invoke<VaultStatus>("vault_wipe"),
   vaultChangePassword: (oldPassword: string, newPassword: string) =>
     invoke<void>("vault_change_password", { oldPassword, newPassword }),
-  accountsList: () => invoke<Account[]>("accounts_list"),
-  accountRefreshAvatar: (steamId: string) =>
-    invoke<Account>("account_refresh_avatar", { steamId }),
+  vaultVerifyPassword: (password: string) =>
+    invoke<void>("vault_verify_password", { password }),
+  accountsList: (refreshAvatars = false) =>
+    invoke<Account[]>("accounts_list", { refreshAvatars }),
   accountSelect: (steamId: string) => invoke<void>("account_select", { steamId }),
   accountRemove: (steamId: string) => invoke<void>("account_remove", { steamId }),
   guardCode: () => invoke<GuardCode>("guard_code"),

@@ -10,7 +10,7 @@ use crate::models::{
 };
 use crate::state::{map_vault_err, AppState, UnlockedVault};
 use crate::steam;
-use crate::vault::{self, VaultData};
+use crate::vault;
 
 #[tauri::command]
 pub fn vault_status(state: State<'_, Arc<AppState>>) -> Result<VaultStatusDto, String> {
@@ -68,6 +68,18 @@ pub fn vault_wipe(state: State<'_, Arc<AppState>>) -> Result<VaultStatusDto, Str
 }
 
 #[tauri::command]
+pub fn vault_verify_password(
+    state: State<'_, Arc<AppState>>,
+    password: String,
+) -> Result<(), String> {
+    if !state.is_unlocked() {
+        return Err("хранилище заблокировано".into());
+    }
+    let _ = vault::unlock(&state.vault_path, &password).map_err(map_vault_err)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn vault_change_password(
     state: State<'_, Arc<AppState>>,
     old_password: String,
@@ -114,46 +126,17 @@ fn map_accounts(state: &AppState) -> Result<Vec<AccountDto>, String> {
 }
 
 #[tauri::command]
-pub async fn accounts_list(state: State<'_, Arc<AppState>>) -> Result<Vec<AccountDto>, String> {
-    let app = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        steam::avatar::refresh_missing_avatars(&app)?;
-        map_accounts(&app)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub async fn account_refresh_avatar(
+pub async fn accounts_list(
     state: State<'_, Arc<AppState>>,
-    steam_id: String,
-) -> Result<AccountDto, String> {
+    refresh_avatars: Option<bool>,
+) -> Result<Vec<AccountDto>, String> {
     let app = state.inner().clone();
+    let refresh = refresh_avatars.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
-        let dto = app.with_unlocked_mut(|u| {
-            let account = u
-                .data
-                .accounts
-                .iter_mut()
-                .find(|a| a.steam_id == steam_id)
-                .ok_or_else(|| "аккаунт не найден".to_string())?;
-            steam::avatar::ensure_avatar(account);
-            let selected = u
-                .data
-                .selected_steamid
-                .as_ref()
-                .is_some_and(|id| id == &account.steam_id);
-            Ok(AccountDto {
-                account_name: account.account_name.clone(),
-                steam_id: account.steam_id.clone(),
-                avatar_url: account.avatar_url.clone(),
-                has_session: account.tokens_json.is_some(),
-                selected,
-            })
-        })?;
-        app.persist()?;
-        Ok(dto)
+        if refresh {
+            steam::avatar::refresh_missing_avatars(&app)?;
+        }
+        map_accounts(&app)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -343,12 +326,6 @@ pub fn settings_set(
 }
 
 #[tauri::command]
-pub fn encryption_status(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
-    // Vault is always encrypted when it exists.
-    Ok(vault::exists(&state.vault_path) && state.is_unlocked())
-}
-
-#[tauri::command]
 pub fn steam_setup_begin(
     state: State<'_, Arc<AppState>>,
     account_name: String,
@@ -439,7 +416,3 @@ pub async fn mobile_transfer_import(
         .map_err(|e| e.to_string())?
 }
 
-#[allow(dead_code)]
-fn _empty_vault() -> VaultData {
-    VaultData::default()
-}

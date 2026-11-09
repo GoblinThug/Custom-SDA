@@ -31,7 +31,7 @@ env:
   # nttld/setup-ndk expects release tags (r26b), not the numeric build id (26.1.10909125).
   ANDROID_NDK_VERSION: r26b
   JAVA_VERSION: "17"
-  ANDROID_COMPILE_SDK: "35"
+  ANDROID_COMPILE_SDK: "36"
 
 jobs:
   desktop:
@@ -252,7 +252,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.meta.outputs.tag }}"
-          mapfile -t files < <(find release-assets -type f)
+          mapfile -t files < <(find release-assets -type f ! -name '*.app' )
           if ((${#files[@]} == 0)); then
             echo "::error::No files to upload"
             exit 1
@@ -268,3 +268,4 @@ jobs:
               --target "$GITHUB_SHA" \
               "${files[@]}"
           fi
+          gh release edit "$TAG" --latest

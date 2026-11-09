@@ -9,6 +9,16 @@
 | **Push в ветку `main`** | Сборка всех платформ → **автоматический Release** (тег `v` + версия из `package.json`) |
 | **Actions → Build release (all platforms) → Run workflow** | Только сборка; **Release не создаётся** |
 
+## Обновления (Windows / Linux / macOS)
+
+Без signing-ключей. Клиент читает публичный GitHub API:
+
+`https://api.github.com/repos/GoblinThug/Custom-SDA/releases/latest`
+
+Кнопка **«Проверить обновления»** в футере: сравнивает тег релиза с версией приложения → открывает установщик (или страницу Release) в браузере. Подробнее: [docs/UPDATER.md](../docs/UPDATER.md).
+
+Android/iOS: этот канал не используется (магазин / ручная установка APK).
+
 ## Автоматическая публикация (без ручного `git tag`)
 
 Версия релиза берётся из **`package.json` → `version`**. Сейчас **`0.0.1`** → GitHub Release **`v0.0.1`**.
@@ -34,7 +44,7 @@
 | **Android** | `windows-latest` | `npm run build:apk` | `release/Custom SDA_<версия>_arm64-setup.apk` |
 | **iOS** | `macos-latest` | `npm run build:ios` | `.app` для симулятора (по умолчанию; не IPA) |
 
-**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-35` (API 37 в CI репозитории Google часто ещё нет).
+**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-36` (Tauri 2 plugins требуют compileSdk ≥ 36).
 
 **iOS CI:** `pod install` только при реальных `pod` в Podfile; пустой Podfile с `*_macOS` без таргета в Xcode больше не валит job.
 
@@ -124,8 +134,6 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
 | Secret | Платформа | Назначение |
 |--------|-----------|------------|
-| `TAURI_SIGNING_PRIVATE_KEY` | Desktop updater | Подпись обновлений Tauri |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Desktop | Пароль ключа |
 | `ANDROID_KEYSTORE_BASE64` | Android | Release keystore (base64) |
 | `ANDROID_KEYSTORE_PASSWORD` | Android | |
 | `ANDROID_KEY_ALIAS` | Android | |
@@ -191,8 +199,10 @@ git push -u origin main
 | Файл | Роль |
 |------|------|
 | `.github/workflows/build-release.yml` | Пайплайн CI |
+| `scripts/stage-desktop-artifacts.sh` | Сбор desktop-артефактов |
 | `scripts/build-apk.ps1` | Android на Windows |
 | `scripts/build-ios.sh` | iOS на Mac |
 | `scripts/copy-release.mjs` | Копирование exe в `release/` |
+| `docs/UPDATER.md` | Обновления через GitHub Releases |
 | `src-tauri/tauri.conf.json` | Общий конфиг Tauri |
 | `src-tauri/tauri.ios.conf.json` | iOS minimum version |

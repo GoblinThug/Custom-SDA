@@ -79,6 +79,10 @@ Release APK (Windows): `npm run build:apk`
 - На диске только `vault.csda` (ciphertext)
 - В UI не передаются `shared_secret` / `identity_secret`
 - Потеря пароля = потеря доступа к vault (храните revocation codes отдельно)
+- Перенос на телефон по QR: AES-256-GCM + отдельный 6-значный код (см. `src-tauri/src/mobile_transfer.rs`)
+- Android/iOS: опциональный вход по биометрии (Настройки → Безопасность), пароль проверяется перед включением
+- Desktop: обновления через GitHub Releases (`docs/UPDATER.md`)
+- Автоблокировка: **Настройки → Безопасность → Автоблокировка (сек)**
 
 ## Импорт
 

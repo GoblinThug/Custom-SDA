@@ -17,6 +17,11 @@ release
 # Tauri mobile gen (recreated in CI)
 src-tauri/gen/apple
 
+# Updater private key — never commit (use GitHub Secrets)
+keys/
+*.key
+!*.key.pub
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

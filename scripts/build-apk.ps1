@@ -2,6 +2,33 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
+function Copy-JniWithRetry {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$JniDir
+    )
+    $name = Split-Path $Source -Leaf
+    $dest = Join-Path $JniDir $name
+    $androidDir = Join-Path $root "src-tauri\gen\android"
+    if (Test-Path (Join-Path $androidDir "gradlew.bat")) {
+        Push-Location $androidDir
+        try { & .\gradlew.bat --stop 2>$null } finally { Pop-Location }
+        Start-Sleep -Seconds 1
+    }
+    foreach ($attempt in 1..12) {
+        try {
+            if (Test-Path $dest) {
+                Remove-Item -LiteralPath $dest -Force -ErrorAction Stop
+            }
+            Copy-Item -LiteralPath $Source -Destination $dest -Force
+            return
+        } catch {
+            if ($attempt -eq 12) { throw }
+            Start-Sleep -Milliseconds (250 * $attempt)
+        }
+    }
+}
+
 if (-not $env:ANDROID_HOME) {
     $env:ANDROID_HOME = "$env:USERPROFILE\Android\Sdk"
 }
@@ -28,7 +55,8 @@ try {
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $null = & $tauri android build --apk --target aarch64 2>&1
+        # Rust only — APK is assembled via gradlew below (--apk would run Gradle and lock jniLibs on CI).
+        $null = & $tauri android build --target aarch64 2>&1
     } finally {
         $ErrorActionPreference = $prevEap
     }
@@ -47,8 +75,8 @@ $libcxx = Join-Path $env:NDK_HOME "toolchains\llvm\prebuilt\windows-x86_64\sysro
 
 New-Item -ItemType Directory -Force -Path $jni | Out-Null
 New-Item -ItemType Directory -Force -Path $assets | Out-Null
-Copy-Item -Force $so $jni
-Copy-Item -Force $libcxx $jni
+Copy-JniWithRetry -Source $so -JniDir $jni
+Copy-JniWithRetry -Source $libcxx -JniDir $jni
 Remove-Item -Recurse -Force (Join-Path $assets "*") -ErrorAction SilentlyContinue
 Copy-Item -Recurse -Force (Join-Path $root "dist\*") $assets
 Copy-Item -Force (Join-Path $root "src-tauri\tauri.conf.json") $assets
@@ -59,6 +87,9 @@ $androidDir = Join-Path $root "src-tauri\gen\android"
 Push-Location $androidDir
 try {
     & .\gradlew.bat assembleArm64Release -x rustBuildArm64Release -x rustBuildUniversalRelease
+    if ($LASTEXITCODE -ne 0) {
+        throw "Gradle assembleArm64Release failed (exit $LASTEXITCODE)."
+    }
 } finally {
     Pop-Location
 }

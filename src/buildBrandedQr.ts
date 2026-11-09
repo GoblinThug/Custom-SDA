@@ -45,34 +45,45 @@ async function overlayLogo(qrDataUrl: string, size: number, logoRatio: number): 
   return canvas.toDataURL("image/png");
 }
 
-/** Payloads from mobile transfer are near QR capacity — logo only on short URLs. */
-const DENSE_QR_LEN = 1000;
+export type BrandedQrOptions = {
+  /** Bigger modules for phone display / photo scan */
+  large?: boolean;
+  /** Near full-screen on phone (max bitmap resolution) */
+  extraLarge?: boolean;
+};
 
-/** Large, high-contrast QR with app icon in the center (when ECC allows). */
-export async function buildBrandedQrDataUrl(text: string): Promise<string> {
-  const size = 440;
+/** High-contrast QR; transfer payloads skip logo and use maximal size + ECC-L. */
+export async function buildBrandedQrDataUrl(
+  text: string,
+  opts?: BrandedQrOptions,
+): Promise<string> {
+  const transferSized = text.length > 200;
+  // High pixel density so each module stays sharp when photographed from another phone.
+  const size = opts?.extraLarge
+    ? 1024
+    : opts?.large || transferSized
+      ? 900
+      : 420;
+  const margin = transferSized ? 3 : 4;
+
   const qrOptions = {
-    margin: 4,
+    margin,
     width: size,
-    color: { dark: "#101828", light: "#ffffff" },
+    color: { dark: "#000000", light: "#ffffff" },
   };
 
-  const attempts: { level: "L" | "M" | "Q"; logoRatio: number }[] =
-    text.length > DENSE_QR_LEN
-      ? [
-          { level: "L", logoRatio: 0 },
-          { level: "M", logoRatio: 0 },
-        ]
-      : text.length > 500
-        ? [
-            { level: "M", logoRatio: 0 },
-            { level: "L", logoRatio: 0 },
-            { level: "M", logoRatio: 0.12 },
-          ]
-        : [
-            { level: "M", logoRatio: 0.12 },
-            { level: "L", logoRatio: 0 },
-          ];
+  if (transferSized) {
+    const dataUrl = await QRCode.toDataURL(text, {
+      ...qrOptions,
+      errorCorrectionLevel: "L",
+    });
+    return dataUrl;
+  }
+
+  const attempts: { level: "L" | "M" | "Q"; logoRatio: number }[] = [
+    { level: "M", logoRatio: 0.12 },
+    { level: "L", logoRatio: 0 },
+  ];
 
   for (const { level, logoRatio } of attempts) {
     try {

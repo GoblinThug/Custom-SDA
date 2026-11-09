@@ -3,7 +3,10 @@ use std::time::{Duration, Instant};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD as B64, URL_SAFE_NO_PAD as B64URL},
+    Engine,
+};
 use parking_lot::Mutex;
 use rand::Rng;
 use serde::Serialize;
@@ -13,11 +16,12 @@ use crate::models::StoredAccount;
 use crate::state::AppState;
 
 const TRANSFER_TTL: Duration = Duration::from_secs(300);
-/// QR v40, ECC-L (byte mode) — запас под рендер на фронте.
-const MAX_QR_PAYLOAD_LEN: usize = 2700;
+/// Target: QR version ~15–20 ECC-L stays scannable from a phone screen.
+const MAX_QR_PAYLOAD_LEN: usize = 1200;
 
+/// Legacy v2 plaintext (full field names). Kept for decrypting old QR codes.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct TransferAccount {
+struct TransferAccountV2 {
     pub account_name: String,
     pub steam_id: String,
     pub shared_secret: String,
@@ -32,45 +36,85 @@ struct TransferAccount {
     pub avatar_url: Option<String>,
 }
 
-impl From<&StoredAccount> for TransferAccount {
-    fn from(a: &StoredAccount) -> Self {
-        Self {
-            account_name: a.account_name.clone(),
-            steam_id: a.steam_id.clone(),
-            shared_secret: a.shared_secret.clone(),
-            identity_secret: a.identity_secret.clone(),
-            device_id: a.device_id.clone(),
-            revocation_code: a.revocation_code.clone(),
-            serial_number: a.serial_number.clone(),
-            token_gid: a.token_gid.clone(),
-            uri: a.uri.clone(),
-            secret_1: a.secret_1.clone(),
-            avatar_url: a
-                .avatar_url
-                .as_ref()
-                .filter(|u| !u.trim().is_empty() && u.len() <= 512)
-                .cloned(),
-        }
-    }
+/// Compact v3 plaintext: short keys, no avatar, no name/id (taken from envelope).
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct TransferAccountV3 {
+    /// shared_secret as standard or url-safe base64
+    #[serde(rename = "ss")]
+    shared_secret: String,
+    #[serde(rename = "is", default, skip_serializing_if = "String::is_empty")]
+    identity_secret: String,
+    #[serde(rename = "d", default, skip_serializing_if = "String::is_empty")]
+    device_id: String,
+    #[serde(rename = "r", default, skip_serializing_if = "String::is_empty")]
+    revocation_code: String,
+    #[serde(rename = "sn", default, skip_serializing_if = "String::is_empty")]
+    serial_number: String,
+    #[serde(rename = "tg", default, skip_serializing_if = "String::is_empty")]
+    token_gid: String,
+    #[serde(rename = "u", default, skip_serializing_if = "String::is_empty")]
+    uri: String,
+    #[serde(rename = "s1", default, skip_serializing_if = "String::is_empty")]
+    secret_1: String,
 }
 
-impl From<TransferAccount> for StoredAccount {
-    fn from(t: TransferAccount) -> Self {
+fn b64_to_url_safe(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Ok(bytes) = B64.decode(trimmed) {
+        return B64URL.encode(bytes);
+    }
+    if let Ok(bytes) = B64URL.decode(trimmed) {
+        return B64URL.encode(bytes);
+    }
+    trimmed.to_string()
+}
+
+fn b64_to_standard(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Ok(bytes) = B64URL.decode(trimmed) {
+        return B64.encode(bytes);
+    }
+    if let Ok(bytes) = B64.decode(trimmed) {
+        return B64.encode(bytes);
+    }
+    trimmed.to_string()
+}
+
+impl TransferAccountV3 {
+    fn from_stored(a: &StoredAccount) -> Self {
+        // Minimal fields for Guard + confirmations — smaller QR, larger modules.
+        Self {
+            shared_secret: b64_to_url_safe(&a.shared_secret),
+            identity_secret: b64_to_url_safe(&a.identity_secret),
+            device_id: a.device_id.trim().to_string(),
+            revocation_code: a.revocation_code.trim().to_string(),
+            serial_number: String::new(),
+            token_gid: String::new(),
+            uri: String::new(),
+            secret_1: String::new(),
+        }
+    }
+
+    fn into_stored(self, account_name: String, steam_id: String) -> StoredAccount {
         StoredAccount {
-            account_name: t.account_name,
-            steam_id: t.steam_id,
-            shared_secret: t.shared_secret,
-            identity_secret: t.identity_secret,
-            device_id: t.device_id,
-            revocation_code: t.revocation_code,
-            serial_number: t.serial_number,
-            token_gid: t.token_gid,
-            uri: t.uri,
-            secret_1: t.secret_1,
+            account_name,
+            steam_id,
+            shared_secret: b64_to_standard(&self.shared_secret),
+            identity_secret: b64_to_standard(&self.identity_secret),
+            device_id: self.device_id,
+            revocation_code: self.revocation_code,
+            serial_number: self.serial_number,
+            token_gid: self.token_gid,
+            uri: self.uri,
+            secret_1: b64_to_standard(&self.secret_1),
             tokens_json: None,
-            avatar_url: t
-                .avatar_url
-                .filter(|u| !u.trim().is_empty() && u.len() <= 512),
+            avatar_url: None,
         }
     }
 }
@@ -94,24 +138,39 @@ fn zlib_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileTransferDto {
-    /// Содержимое QR (JSON), без секретов в открытом виде.
+    /// Compact JSON for the QR (v3). Prefer this over qr_url for scanning.
     pub qr_payload: String,
-    /// Deep link для сканера камеры: customsda://import?d=...
+    /// Deep link for Telegram / system share (larger — do not put in QR).
     pub qr_url: String,
-    /// Шестизначный код — одинаковый на ПК и телефоне для расшифровки.
     pub code: String,
     pub account_name: String,
     pub expires_in_secs: u64,
 }
 
+/// Wire format for QR. v2 uses long keys; v3 uses short aliases.
 #[derive(Debug, Clone, serde::Deserialize, Serialize)]
 pub struct QrEnvelope {
+    pub v: u32,
+    #[serde(alias = "s")]
+    pub salt: String,
+    #[serde(alias = "n")]
+    pub nonce: String,
+    #[serde(alias = "c")]
+    pub ciphertext: String,
+    #[serde(alias = "a")]
+    pub account_name: String,
+    #[serde(alias = "i")]
+    pub steam_id: String,
+}
+
+#[derive(Serialize)]
+struct QrEnvelopeV3Wire {
     v: u32,
-    salt: String,
-    nonce: String,
-    ciphertext: String,
-    account_name: String,
-    steam_id: String,
+    s: String,
+    n: String,
+    c: String,
+    a: String,
+    i: String,
 }
 
 struct ActiveTransfer {
@@ -162,9 +221,9 @@ impl MobileTransferState {
         let mut salt = [0u8; 16];
         rand::thread_rng().fill(&mut salt);
         let key = transfer_key(&code, &salt);
-        let mut account = account;
-        crate::steam::avatar::ensure_avatar(&mut account);
-        let slim = TransferAccount::from(&account);
+
+        // No avatar fetch — keeps ciphertext small and QR modules large.
+        let slim = TransferAccountV3::from_stored(&account);
         let json = serde_json::to_vec(&slim).map_err(|e| e.to_string())?;
         let plain = zlib_compress(&json)?;
         let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
@@ -175,23 +234,20 @@ impl MobileTransferState {
             .encrypt(nonce, plain.as_ref())
             .map_err(|e| e.to_string())?;
 
-        let envelope = QrEnvelope {
-            v: 2,
-            salt: B64.encode(salt),
-            nonce: B64.encode(nonce_bytes),
-            ciphertext: B64.encode(ciphertext),
-            account_name: account.account_name.clone(),
-            steam_id: account.steam_id.clone(),
+        let wire = QrEnvelopeV3Wire {
+            v: 3,
+            s: B64URL.encode(salt),
+            n: B64URL.encode(nonce_bytes),
+            c: B64URL.encode(ciphertext),
+            a: account.account_name.clone(),
+            i: account.steam_id.clone(),
         };
-        let qr_payload = serde_json::to_string(&envelope).map_err(|e| e.to_string())?;
-        let qr_url = format!(
-            "customsda://import?d={}",
-            urlencoding::encode(&qr_payload)
-        );
+        let qr_payload = serde_json::to_string(&wire).map_err(|e| e.to_string())?;
+        let qr_url = format!("customsda://import?d={}", B64URL.encode(qr_payload.as_bytes()));
 
-        if qr_url.len() > MAX_QR_PAYLOAD_LEN {
+        if qr_payload.len() > MAX_QR_PAYLOAD_LEN {
             return Err(
-                "данные аккаунта слишком большие для одного QR — сессия Steam не переносится; если ошибка повторяется, экспортируйте maFile вручную"
+                "данные аккаунта слишком большие для одного QR — экспортируйте maFile вручную"
                     .into(),
             );
         }
@@ -231,19 +287,26 @@ impl Default for MobileTransferState {
     }
 }
 
+fn decode_b64_flexible(value: &str) -> Result<Vec<u8>, String> {
+    B64URL
+        .decode(value)
+        .or_else(|_| B64.decode(value))
+        .map_err(|e| e.to_string())
+}
+
 pub fn decrypt_qr_payload(code: &str, envelope: &QrEnvelope) -> Result<StoredAccount, String> {
-    let salt = B64.decode(&envelope.salt).map_err(|e| e.to_string())?;
+    let salt = decode_b64_flexible(&envelope.salt)?;
     if salt.len() != 16 {
         return Err("неверный QR".into());
     }
     let mut salt_arr = [0u8; 16];
     salt_arr.copy_from_slice(&salt);
     let key = transfer_key(code, &salt_arr);
-    let nonce_bytes = B64.decode(&envelope.nonce).map_err(|e| e.to_string())?;
+    let nonce_bytes = decode_b64_flexible(&envelope.nonce)?;
     if nonce_bytes.len() != 12 {
         return Err("неверный QR".into());
     }
-    let ciphertext = B64.decode(&envelope.ciphertext).map_err(|e| e.to_string())?;
+    let ciphertext = decode_b64_flexible(&envelope.ciphertext)?;
     let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
     let nonce = Nonce::from_slice(&nonce_bytes);
     let plain = cipher
@@ -254,8 +317,32 @@ pub fn decrypt_qr_payload(code: &str, envelope: &QrEnvelope) -> Result<StoredAcc
     } else {
         plain
     };
-    let slim: TransferAccount = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
-    Ok(StoredAccount::from(slim))
+
+    if envelope.v >= 3 {
+        let slim: TransferAccountV3 = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+        return Ok(slim.into_stored(
+            envelope.account_name.clone(),
+            envelope.steam_id.clone(),
+        ));
+    }
+
+    let slim: TransferAccountV2 = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+    Ok(StoredAccount {
+        account_name: slim.account_name,
+        steam_id: slim.steam_id,
+        shared_secret: slim.shared_secret,
+        identity_secret: slim.identity_secret,
+        device_id: slim.device_id,
+        revocation_code: slim.revocation_code,
+        serial_number: slim.serial_number,
+        token_gid: slim.token_gid,
+        uri: slim.uri,
+        secret_1: slim.secret_1,
+        tokens_json: None,
+        avatar_url: slim
+            .avatar_url
+            .filter(|u| !u.trim().is_empty() && u.len() <= 512),
+    })
 }
 
 fn transfer_key(code: &str, salt: &[u8; 16]) -> [u8; 32] {

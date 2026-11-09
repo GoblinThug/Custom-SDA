@@ -20,6 +20,12 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_os::init())
         .setup(|app| {
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_biometric::Builder::new().build())?;
+            }
+
             let app_data = app
                 .path()
                 .app_data_dir()
@@ -45,8 +51,8 @@ pub fn run() {
             commands::vault_lock,
             commands::vault_wipe,
             commands::vault_change_password,
+            commands::vault_verify_password,
             commands::accounts_list,
-            commands::account_refresh_avatar,
             commands::account_select,
             commands::account_remove,
             commands::guard_code,
@@ -59,7 +65,6 @@ pub fn run() {
             commands::events_recent,
             commands::settings_get,
             commands::settings_set,
-            commands::encryption_status,
             commands::steam_setup_begin,
             commands::steam_setup_submit_login_code,
             commands::steam_setup_continue,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Collect Tauri desktop installers/binaries for CI (root target/, triple dirs, src-tauri/target/).
+# Collect Tauri desktop installers for GitHub Releases.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/release-artifacts"
@@ -15,13 +15,12 @@ if ((${#SEARCH_ROOTS[@]} == 0)); then
   exit 1
 fi
 
-# Any */release/bundle or */aarch64-apple-darwin/release/bundle
 while IFS= read -r -d '' bundle; do
   cp -R "$bundle/." "$OUT/"
 done < <(find "${SEARCH_ROOTS[@]}" -type d -name bundle -path '*/release/bundle' -print0 2>/dev/null || true)
 
 while IFS= read -r -d '' f; do
-  cp "$f" "$OUT/"
+  cp -f "$f" "$OUT/"
 done < <(find "${SEARCH_ROOTS[@]}" -type f \( \
   -name 'custom-sda' -o -name 'custom-sda.exe' -o -name '*.exe' -o \
   -name '*.msi' -o -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \
@@ -34,7 +33,6 @@ while IFS= read -r -d '' app; do
   fi
 done < <(find "${SEARCH_ROOTS[@]}" -type d -name '*.app' -print0 2>/dev/null || true)
 
-# macOS: zip .app so upload-artifact always has a top-level file (CI-friendly download).
 if [[ "$(uname -s)" == "Darwin" ]]; then
   app=$(find "$OUT" -maxdepth 4 -type d -name '*.app' -print -quit)
   if [[ -z "$app" ]]; then
@@ -46,6 +44,14 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     ditto -c -k --sequesterRsrc --keepParent "$app" "$OUT/custom-sda-macos-app.zip"
   fi
 fi
+
+# Flatten nested installers to OUT root (unique names)
+while IFS= read -r -d '' f; do
+  base="$(basename "$f")"
+  if [[ ! -f "$OUT/$base" ]]; then
+    cp -f "$f" "$OUT/$base"
+  fi
+done < <(find "$OUT" -type f \( -name '*.AppImage' -o -name '*-setup.exe' -o -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' \) -print0 2>/dev/null || true)
 
 if [[ -z "$(find "$OUT" -mindepth 1 -print -quit)" ]]; then
   echo "::error::No desktop artifacts found"

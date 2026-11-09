@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Account, api } from "./api";
 import { Lang, localizeErrorMessage, t } from "./i18n";
 import { showToast } from "./toast";
-import { previewTransferEnvelope } from "./transferDeepLink";
+import {
+  parseTransferPayloadFromUrl,
+  previewTransferEnvelope,
+} from "./transferDeepLink";
+import { isMobileHost } from "./platform";
+import { MobileTransferPhoneSteps } from "./MobileTransferPhoneSteps";
 
 export function MobileTransferReceive({
   lang,
@@ -12,6 +17,7 @@ export function MobileTransferReceive({
   onError,
   onClear,
   onOpenScanner,
+  onCapturedPayload,
 }: {
   lang: Lang;
   qrPayload: string | null;
@@ -20,8 +26,10 @@ export function MobileTransferReceive({
   onError: (msg: string | null) => void;
   onClear: () => void;
   onOpenScanner?: () => void;
+  onCapturedPayload?: (payload: string) => void;
 }) {
   const [code, setCode] = useState("");
+  const [pasteLink, setPasteLink] = useState("");
   const [busy, setBusy] = useState(false);
 
   const preview = useMemo(
@@ -59,17 +67,47 @@ export function MobileTransferReceive({
       <div className="panel">
         <h2 className="page-title">{t(lang, "mobileTransferReceiveTitle")}</h2>
         <p className="muted page-lead">{t(lang, "mobileTransferReceiveLead")}</p>
+        {isMobileHost() && <MobileTransferPhoneSteps lang={lang} mode="receive" />}
         <div className="surface-card stack">
           {onOpenScanner && (
             <button type="button" className="primary-btn" onClick={onOpenScanner}>
               {t(lang, "mobileScannerOpen")}
             </button>
           )}
-          {accounts.length > 0 ? (
-            <p className="muted card-hint">{t(lang, "mobileTransferReceiveIdleHint")}</p>
-          ) : (
-            <p className="muted card-hint">{t(lang, "mobileTransferReceiveWaiting")}</p>
-          )}
+          <p className="muted card-hint">
+            {accounts.length > 0
+              ? t(lang, "mobileTransferReceiveIdleHint")
+              : t(lang, "mobileTransferReceiveWaiting")}
+          </p>
+          <div className="transfer-alt-block">
+            <div className="label">{t(lang, "mobileTransferPasteLink")}</div>
+            <textarea
+              className="field transfer-paste-field"
+              rows={3}
+              value={pasteLink}
+              placeholder={t(lang, "mobileTransferPastePlaceholder")}
+              onChange={(e) => setPasteLink(e.target.value)}
+            />
+            <button
+              type="button"
+              className="secondary-btn"
+              disabled={!pasteLink.trim()}
+              onClick={() => {
+                const payload = parseTransferPayloadFromUrl(pasteLink.trim());
+                if (!payload) {
+                  onError(t(lang, "mobileScannerInvalid"));
+                  return;
+                }
+                onError(null);
+                if (onCapturedPayload) {
+                  onCapturedPayload(payload);
+                  setPasteLink("");
+                }
+              }}
+            >
+              {t(lang, "mobileTransferPasteApply")}
+            </button>
+          </div>
         </div>
       </div>
     );

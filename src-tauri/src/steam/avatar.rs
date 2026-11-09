@@ -5,10 +5,31 @@ use crate::state::AppState;
 
 fn http_client() -> Result<Client, String> {
     Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("CustomSDA/4.0")
+        .timeout(std::time::Duration::from_secs(8))
+        // Browser-like UA — Steam often 403s unknown clients, which breaks avatars.
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        )
         .build()
         .map_err(|e| e.to_string())
+}
+
+fn normalize_avatar_url(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let https = if let Some(rest) = trimmed.strip_prefix("http://") {
+        format!("https://{rest}")
+    } else {
+        trimmed.to_string()
+    };
+    if https.starts_with("https://") {
+        Some(https)
+    } else {
+        None
+    }
 }
 
 fn valid_steam_id(steam_id: &str) -> bool {
@@ -27,11 +48,7 @@ fn extract_tag_value(xml: &str, tag: &str) -> Option<String> {
         let end = rest.find(&close)?;
         rest[..end].trim()
     };
-    if value.starts_with("http://") || value.starts_with("https://") {
-        Some(value.to_string())
-    } else {
-        None
-    }
+    normalize_avatar_url(value)
 }
 
 fn avatar_from_profile_xml(body: &str) -> Option<String> {
@@ -84,18 +101,39 @@ pub fn ensure_avatar(account: &mut StoredAccount) {
 }
 
 pub fn refresh_missing_avatars(state: &AppState) -> Result<(), String> {
+    let missing: Vec<(String, String)> = state.with_unlocked(|u| {
+        Ok(u.data
+            .accounts
+            .iter()
+            .filter(|a| {
+                a.avatar_url
+                    .as_ref()
+                    .is_none_or(|url| url.trim().is_empty())
+            })
+            .map(|a| (a.steam_id.clone(), a.account_name.clone()))
+            .collect())
+    })?;
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let fetched: Vec<(String, String)> = missing
+        .into_iter()
+        .filter_map(|(steam_id, account_name)| {
+            let url = fetch_avatar_url(&steam_id, &account_name)?;
+            Some((steam_id, url))
+        })
+        .collect();
+
+    if fetched.is_empty() {
+        return Ok(());
+    }
+
     let changed = state.with_unlocked_mut(|u| {
         let mut changed = false;
-        for account in &mut u.data.accounts {
-            let missing = account
-                .avatar_url
-                .as_ref()
-                .is_none_or(|url| url.trim().is_empty());
-            if !missing {
-                continue;
-            }
-            if let Some(url) = fetch_avatar_url(&account.steam_id, &account.account_name) {
-                account.avatar_url = Some(url);
+        for (steam_id, url) in &fetched {
+            if let Some(account) = u.data.accounts.iter_mut().find(|a| &a.steam_id == steam_id) {
+                account.avatar_url = Some(url.clone());
                 changed = true;
             }
         }

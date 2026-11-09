@@ -36,6 +36,7 @@ import {
   IconEventImportSuccess,
   IconEye,
   IconEyeSlash,
+  IconFingerprint,
   IconGear,
   IconHome,
   IconImport,
@@ -47,6 +48,13 @@ import {
   IconShield,
   AppBrandIcon,
 } from "./icons";
+import {
+  biometricHardwareAvailable,
+  clearBiometricUnlock,
+  enableBiometricUnlock,
+  isBiometricUnlockStored,
+  unlockPasswordViaBiometric,
+} from "./biometricVault";
 import { MobileTransferPage } from "./MobileTransfer";
 import { MobileTransferReceive } from "./MobileTransferReceive";
 import { MobileSetupChoice } from "./MobileSetupChoice";
@@ -61,6 +69,8 @@ import {
 } from "./mobileSetup";
 import { isMobileHost } from "./platform";
 import { PENDING_TRANSFER_STORAGE_KEY } from "./transferDeepLink";
+import { checkAppUpdate, installAppUpdate } from "./updater";
+import { APP_VERSION } from "./version";
 import { useTransferDeepLink } from "./useTransferDeepLink";
 import { SelectMenu } from "./SelectMenu";
 import { WindowFrame } from "./WindowFrame";
@@ -85,6 +95,17 @@ function formatCode(code: string) {
   return code.split("").join(" ");
 }
 
+function normalizeAvatarSrc(url: string | null | undefined): string | null {
+  const raw = url?.trim();
+  if (!raw) {
+    return null;
+  }
+  if (raw.startsWith("http://")) {
+    return `https://${raw.slice("http://".length)}`;
+  }
+  return raw;
+}
+
 function AccountAvatar({
   name,
   avatarUrl,
@@ -92,10 +113,20 @@ function AccountAvatar({
   name: string;
   avatarUrl: string | null;
 }) {
+  const [broken, setBroken] = useState(false);
+  const src = normalizeAvatarSrc(avatarUrl);
+  useEffect(() => {
+    setBroken(false);
+  }, [src]);
   return (
     <div className="avatar">
-      {avatarUrl ? (
-        <img src={avatarUrl} alt="" referrerPolicy="no-referrer" />
+      {src && !broken ? (
+        <img
+          src={src}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setBroken(true)}
+        />
       ) : (
         (name[0] ?? "?").toUpperCase()
       )}
@@ -207,7 +238,25 @@ function AuthGate({
   const [password2, setPassword2] = useState("");
   const [busy, setBusy] = useState(false);
   const [wipeConfirm, setWipeConfirm] = useState(false);
+  const [bioReady, setBioReady] = useState(false);
   const creating = !status.exists;
+  const bioTried = useRef(false);
+
+  useEffect(() => {
+    if (!isMobileHost() || creating) {
+      setBioReady(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const hw = await biometricHardwareAvailable();
+      if (cancelled) return;
+      setBioReady(hw && isBiometricUnlockStored());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [creating, status.exists]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -221,11 +270,10 @@ function AuthGate({
     }
     setBusy(true);
     try {
-      if (creating) {
-        onReady(await api.vaultCreate(password));
-      } else {
-        onReady(await api.vaultUnlock(password));
-      }
+      const next = creating
+        ? await api.vaultCreate(password)
+        : await api.vaultUnlock(password);
+      onReady(next);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -233,12 +281,38 @@ function AuthGate({
     }
   }
 
+  async function unlockWithBiometric() {
+    setBusy(true);
+    try {
+      const pw = await unlockPasswordViaBiometric(lang);
+      if (!pw) {
+        return;
+      }
+      onReady(await api.vaultUnlock(pw));
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!bioReady || creating || busy || bioTried.current) {
+      return;
+    }
+    bioTried.current = true;
+    void unlockWithBiometric();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bioReady, creating, busy]);
+
   async function wipeAll() {
     setBusy(true);
     try {
       const next = await api.vaultWipe();
       clearMobileSetupMode();
+      clearBiometricUnlock();
       setWipeConfirm(false);
+      setBioReady(false);
       setPassword("");
       setPassword2("");
       onReady(next);
@@ -259,12 +333,23 @@ function AuthGate({
           <h1>{creating ? t(lang, "createTitle") : t(lang, "unlockTitle")}</h1>
         </div>
         <p>{creating ? (createHint ?? t(lang, "createHint")) : t(lang, "unlockHint")}</p>
+        {!creating && bioReady && (
+          <button
+            type="button"
+            className="primary-btn bio-unlock-btn"
+            disabled={busy}
+            onClick={() => void unlockWithBiometric()}
+          >
+            <IconFingerprint />
+            {busy ? "..." : t(lang, "bioUnlock")}
+          </button>
+        )}
         <div>
           <div className="label">{t(lang, "password")}</div>
           <PasswordField
             value={password}
             onChange={setPassword}
-            autoFocus
+            autoFocus={!bioReady}
             lang={lang}
           />
         </div>
@@ -617,11 +702,8 @@ export default function App() {
     isMobileHost() ? loadMobileSetupMode() : null,
   );
   const [showInAppQrScanner, setShowInAppQrScanner] = useState(false);
-  const [mobileTransferPane, setMobileTransferPane] = useState<"send" | "receive">(
-    () =>
-      sessionStorage.getItem(PENDING_TRANSFER_STORAGE_KEY) || isMobileHost()
-        ? "receive"
-        : "send",
+  const [mobileTransferPane, setMobileTransferPane] = useState<"send" | "receive">(() =>
+    sessionStorage.getItem(PENDING_TRANSFER_STORAGE_KEY) ? "receive" : "send",
   );
 
   const rememberTransfer = useCallback((payload: string) => {
@@ -650,34 +732,34 @@ export default function App() {
   const lang = uiLang;
   const showOnboard = forceOnboard || (status?.unlocked && accounts.length === 0);
 
-  const refreshUnlocked = useCallback(async () => {
-    let accs = await api.accountsList();
-    if (isMobileHost()) {
-      const missing = accs.filter((a) => !a.avatar_url?.trim());
-      if (missing.length > 0) {
-        const refreshed = await Promise.all(
-          missing.map((a) =>
-            api.accountRefreshAvatar(a.steam_id).catch(() => null),
-          ),
-        );
-        const byId = new Map(
-          refreshed.filter(Boolean).map((a) => [a!.steam_id, a!]),
-        );
-        if (byId.size > 0) {
-          accs = accs.map((a) => byId.get(a.steam_id) ?? a);
-        }
-      }
-    }
-    const [evs, st] = await Promise.all([api.eventsRecent(), api.settingsGet()]);
+  type RefreshOpts = { refreshAvatars?: boolean; loadGuard?: boolean };
+
+  const refreshUnlocked = useCallback(async (opts?: RefreshOpts) => {
+    const refreshAvatars = opts?.refreshAvatars ?? false;
+    const loadGuard = opts?.loadGuard ?? false;
+    const [accs, evs, st] = await Promise.all([
+      api.accountsList(refreshAvatars),
+      api.eventsRecent(),
+      api.settingsGet(),
+    ]);
     setAccounts(accs);
     setEvents(evs);
     setSettings(st);
     if (accs.length > 0) {
       setForceOnboard(false);
-      setGuard(await api.guardCode());
+      if (loadGuard) {
+        setGuard(await api.guardCode());
+      }
     } else {
       setGuard(null);
     }
+  }, []);
+
+  const refreshAvatarsInBackground = useCallback(() => {
+    void api
+      .accountsList(true)
+      .then(setAccounts)
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -714,8 +796,47 @@ export default function App() {
 
   useEffect(() => {
     if (!status?.unlocked) return;
-    refreshUnlocked().catch((e) => notifyError(String(e)));
-  }, [status?.unlocked, refreshUnlocked]);
+    refreshUnlocked({ refreshAvatars: false, loadGuard: true })
+      .then(() => refreshAvatarsInBackground())
+      .catch((e) => notifyError(String(e)));
+  }, [status?.unlocked, refreshUnlocked, refreshAvatarsInBackground]);
+
+  const lockVault = useCallback(async () => {
+    try {
+      setShowAccounts(false);
+      setStatus(await api.vaultLock());
+    } catch (e) {
+      notifyError(String(e));
+    }
+  }, []);
+
+  const lastActivityRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (!status?.unlocked || !settings?.lock_timeout_secs) {
+      return;
+    }
+    const limitMs = settings.lock_timeout_secs * 1000;
+    lastActivityRef.current = Date.now();
+    const bump = () => {
+      lastActivityRef.current = Date.now();
+    };
+    const events = ["mousedown", "keydown", "touchstart", "scroll"] as const;
+    for (const ev of events) {
+      window.addEventListener(ev, bump, { passive: true });
+    }
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= limitMs) {
+        void lockVault();
+      }
+    }, 1000);
+    return () => {
+      for (const ev of events) {
+        window.removeEventListener(ev, bump);
+      }
+      window.clearInterval(timer);
+    };
+  }, [status?.unlocked, settings?.lock_timeout_secs, lockVault]);
 
   useEffect(() => {
     if (status?.unlocked && pendingTransfer) {
@@ -745,15 +866,6 @@ export default function App() {
     }
   }
 
-  async function lockVault() {
-    try {
-      setShowAccounts(false);
-      setStatus(await api.vaultLock());
-    } catch (e) {
-      notifyError(String(e));
-    }
-  }
-
   async function copyCode() {
     if (!guard) return;
     try {
@@ -775,7 +887,7 @@ export default function App() {
     setBusy(true);
     try {
       await api.importMafile(path);
-      await refreshUnlocked();
+      await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
       setTab("home");
     } catch (e) {
       notifyError(String(e));
@@ -842,6 +954,7 @@ export default function App() {
                 onError={notifyError}
                 onClear={clearPendingTransfer}
                 onOpenScanner={() => setShowInAppQrScanner(true)}
+                onCapturedPayload={rememberTransfer}
               />
             </div>
           )}
@@ -973,6 +1086,10 @@ export default function App() {
             className={`nav-btn ${tab === "mobile" ? "active" : ""}`}
             onClick={() => {
               setForceOnboard(false);
+              setShowInAppQrScanner(false);
+              if (accounts.length === 0) {
+                setMobileTransferPane("receive");
+              }
               setTab("mobile");
             }}
             title={t(lang, "mobile")}
@@ -1008,7 +1125,7 @@ export default function App() {
             <Onboarding
               lang={lang}
               onImported={async () => {
-                await refreshUnlocked();
+                await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
                 setForceOnboard(false);
                 setTab("home");
               }}
@@ -1056,9 +1173,20 @@ export default function App() {
                       key={a.steam_id + a.account_name}
                       className={a.selected ? "active" : ""}
                       onClick={async () => {
-                        await api.accountSelect(a.steam_id);
+                        const id = a.steam_id;
+                        await api.accountSelect(id);
                         setShowAccounts(false);
-                        await refreshUnlocked();
+                        setAccounts((prev) =>
+                          prev.map((x) => ({
+                            ...x,
+                            selected: x.steam_id === id,
+                          })),
+                        );
+                        try {
+                          setGuard(await api.guardCode());
+                        } catch (e) {
+                          notifyError(String(e));
+                        }
                       }}
                     >
                       {a.account_name}
@@ -1151,12 +1279,12 @@ export default function App() {
               onPickFile={pickMaFile}
               onAddAccount={() => setForceOnboard(true)}
               onImported={async () => {
-                await refreshUnlocked();
+                await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
                 setTab("home");
               }}
               onRemove={async (steamId) => {
                 await api.accountRemove(steamId);
-                await refreshUnlocked();
+                await refreshUnlocked({ loadGuard: true });
               }}
               onError={notifyError}
             />
@@ -1231,7 +1359,7 @@ export default function App() {
 
           {tab === "mobile" && (
             <div className="mobile-transfer-tab stack">
-              {isMobileHost() && !showInAppQrScanner && (
+              {!showInAppQrScanner && (
                 <div className="segmented" role="tablist" aria-label={t(lang, "mobile")}>
                   <button
                     type="button"
@@ -1256,9 +1384,7 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {(isMobileHost()
-                ? mobileTransferPane === "receive"
-                : pendingTransfer !== null) ? (
+              {mobileTransferPane === "receive" ? (
                 showInAppQrScanner ? (
                   <Suspense fallback={<div className="muted">{t(lang, "loading")}</div>}>
                     <MobileQrScanner
@@ -1277,11 +1403,12 @@ export default function App() {
                     qrPayload={pendingTransfer}
                     accounts={accounts}
                     onImported={() => {
-                      void refreshUnlocked();
+                      void refreshUnlocked({ refreshAvatars: true, loadGuard: true });
                     }}
                     onError={notifyError}
                     onClear={clearPendingTransfer}
                     onOpenScanner={() => setShowInAppQrScanner(true)}
+                    onCapturedPayload={rememberTransfer}
                   />
                 )
               ) : (
@@ -1306,7 +1433,12 @@ export default function App() {
               }}
               onLock={lockVault}
               onChangePassword={async (oldPassword, newPassword) => {
+                const hadBio = isBiometricUnlockStored();
                 await api.vaultChangePassword(oldPassword, newPassword);
+                clearBiometricUnlock();
+                if (hadBio && isMobileHost()) {
+                  showToast(t(lang, "bioReenableAfterPassword"), "success");
+                }
                 await refreshUnlocked();
               }}
               onError={notifyError}
@@ -1316,11 +1448,51 @@ export default function App() {
       </div>
 
         <footer className="footer">
-          <button className="update-btn" title={t(lang, "checkUpdates")}>
+          <button
+            type="button"
+            className="update-btn"
+            title={t(lang, "checkUpdates")}
+            disabled={busy}
+            onClick={() => {
+              void (async () => {
+                setBusy(true);
+                try {
+                  showToast(t(lang, "updateChecking"), "success");
+                  const result = await checkAppUpdate();
+                  if (result.status === "unsupported") {
+                    showToast(t(lang, "updateUnsupported"), "success");
+                    return;
+                  }
+                  if (result.status === "upToDate") {
+                    showToast(t(lang, "updateUpToDate"), "success");
+                    return;
+                  }
+                  if (result.status === "error") {
+                    notifyError(`${t(lang, "updateFailed")}: ${result.message}`);
+                    return;
+                  }
+                  const msg = t(lang, "updateAvailable").replace(
+                    "{version}",
+                    result.version,
+                  );
+                  if (!window.confirm(msg)) {
+                    return;
+                  }
+                  showToast(t(lang, "updateInstalling"), "success");
+                  const installed = await installAppUpdate(result.downloadUrl);
+                  if (installed.status === "error") {
+                    notifyError(`${t(lang, "updateFailed")}: ${installed.message}`);
+                  }
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
             <IconRefresh />
             {t(lang, "checkUpdates")}
           </button>
-          <span>v.0.0.1</span>
+          <span>v.{APP_VERSION}</span>
         </footer>
       </div>
     </WindowFrame>
@@ -1467,6 +1639,30 @@ function SettingsPage({
   }, [settings]);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [bioHardware, setBioHardware] = useState(false);
+  const [bioEnabled, setBioEnabled] = useState(false);
+  const [bioBusy, setBioBusy] = useState(false);
+  const [bioEnablePassword, setBioEnablePassword] = useState("");
+
+  const showBioSettings = isMobileHost() && bioHardware;
+
+  useEffect(() => {
+    if (!isMobileHost()) {
+      setBioHardware(false);
+      setBioEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const hw = await biometricHardwareAvailable();
+      if (cancelled) return;
+      setBioHardware(hw);
+      setBioEnabled(hw && isBiometricUnlockStored());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const langOptions = [
     { value: "ru", label: "Русский" },
@@ -1556,6 +1752,84 @@ function SettingsPage({
       <div className="surface-card stack">
         <h3 className="inline-section-title">{t(uiLang, "encryptionSection")}</h3>
         <p className="muted card-hint">{t(uiLang, "encryptionHint")}</p>
+
+        {showBioSettings && (
+          <div className="bio-settings stack">
+            <p className="muted card-hint">{t(uiLang, "bioSettingsHint")}</p>
+            <div className="bio-settings-status">
+              <IconFingerprint />
+              <span>
+                {bioEnabled ? t(uiLang, "bioSettingsOn") : t(uiLang, "bioSettingsOff")}
+              </span>
+            </div>
+            {bioEnabled ? (
+              <button
+                type="button"
+                className="ghost-btn danger-btn"
+                disabled={bioBusy}
+                onClick={() => {
+                  setBioBusy(true);
+                  try {
+                    clearBiometricUnlock();
+                    setBioEnabled(false);
+                    setBioEnablePassword("");
+                    showToast(t(uiLang, "bioDisabled"), "success");
+                  } finally {
+                    setBioBusy(false);
+                  }
+                }}
+              >
+                {t(uiLang, "bioSettingsDisable")}
+              </button>
+            ) : (
+              <>
+                <div>
+                  <div className="label">{t(uiLang, "bioSettingsPasswordHint")}</div>
+                  <PasswordField
+                    value={bioEnablePassword}
+                    onChange={setBioEnablePassword}
+                    lang={uiLang}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="primary-btn bio-unlock-btn"
+                  disabled={bioBusy || bioEnablePassword.length < 6}
+                  onClick={async () => {
+                    if (bioEnablePassword.length < 6) {
+                      onError(t(uiLang, "bioPasswordRequired"));
+                      return;
+                    }
+                    setBioBusy(true);
+                    onError(null);
+                    try {
+                      await api.vaultVerifyPassword(bioEnablePassword);
+                      const ok = await enableBiometricUnlock(
+                        bioEnablePassword,
+                        uiLang,
+                      );
+                      if (ok) {
+                        setBioEnabled(true);
+                        setBioEnablePassword("");
+                        showToast(t(uiLang, "bioEnabled"), "success");
+                      } else {
+                        showToast(t(uiLang, "bioUnavailable"), "error");
+                      }
+                    } catch (e) {
+                      onError(String(e));
+                    } finally {
+                      setBioBusy(false);
+                    }
+                  }}
+                >
+                  <IconFingerprint />
+                  {bioBusy ? "…" : t(uiLang, "bioSettingsEnable")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         <div>
           <div className="label">{t(uiLang, "currentPassword")}</div>
           <input

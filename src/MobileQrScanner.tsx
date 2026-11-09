@@ -19,19 +19,60 @@ export function MobileQrScanner({
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const mountId = useId().replace(/:/g, "");
 
+  async function fileToScanBlob(file: File): Promise<Blob> {
+    // Huge phone photos confuse html5-qrcode — downscale for detection.
+    if (file.size < 400_000) {
+      return file;
+    }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxSide = 1600;
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      if (scale >= 0.98) {
+        bitmap.close();
+        return file;
+      }
+      const w = Math.round(bitmap.width * scale);
+      const h = Math.round(bitmap.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        bitmap.close();
+        return file;
+      }
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92),
+      );
+      return blob ?? file;
+    } catch {
+      return file;
+    }
+  }
+
   async function decodeImage(file: File) {
     setBusy(true);
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode(`qr-file-${mountId}`);
+      const scanBlob = await fileToScanBlob(file);
+      const scanFile =
+        scanBlob instanceof File
+          ? scanBlob
+          : new File([scanBlob], "scan.jpg", { type: scanBlob.type || "image/jpeg" });
+
+      let decoded: string | null = null;
       try {
-        const decoded = await scanner.scanFile(file, false);
-        const payload = parseTransferPayloadFromUrl(decoded);
-        if (!payload) {
-          onError(t(lang, "mobileScannerInvalid"));
-          return;
+        decoded = await scanner.scanFile(scanFile, false);
+      } catch {
+        try {
+          decoded = await scanner.scanFile(scanFile, true);
+        } catch {
+          decoded = null;
         }
-        onPayload(payload);
       } finally {
         try {
           scanner.clear();
@@ -39,6 +80,17 @@ export function MobileQrScanner({
           /* ignore */
         }
       }
+
+      if (!decoded) {
+        onError(t(lang, "mobileScannerInvalid"));
+        return;
+      }
+      const payload = parseTransferPayloadFromUrl(decoded);
+      if (!payload) {
+        onError(t(lang, "mobileScannerInvalid"));
+        return;
+      }
+      onPayload(payload);
     } catch {
       onError(t(lang, "mobileScannerInvalid"));
     } finally {
@@ -55,12 +107,11 @@ export function MobileQrScanner({
   }
 
   return (
-    <div className="auth-screen mobile-scanner-screen">
-      <div className="auth-card mobile-qr-scanner stack">
+    <div className="mobile-scanner-screen">
+      <div className="mobile-qr-scanner stack">
         <h1 className="page-title">{t(lang, "mobileScannerTitle")}</h1>
         <p className="muted page-lead">{t(lang, "mobileScannerLead")}</p>
 
-        {/* Hidden mount required by html5-qrcode scanFile */}
         <div id={`qr-file-${mountId}`} className="visually-hidden" aria-hidden />
 
         <input
