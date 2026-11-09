@@ -19,8 +19,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
 
 concurrency:
   group: build-release-${{ github.ref }}
@@ -76,25 +74,29 @@ jobs:
         run: npm ci
 
       - name: Tauri build
+        env:
+          CI: true
+          APPLE_SIGNING_IDENTITY: ${{ matrix.id == 'macos' && '-' || '' }}
         run: npm run tauri build
+
+      - name: Ad-hoc codesign .app (macOS)
+        if: matrix.id == 'macos'
+        shell: bash
+        run: |
+          app=$(find target src-tauri/target -type d -name '*.app' 2>/dev/null | head -1)
+          if [[ -n "$app" ]]; then
+            codesign --force --deep --sign - "$app"
+          fi
 
       - name: Stage desktop artifacts
         shell: bash
-        run: |
-          mkdir -p release-artifacts
-          if [ -d src-tauri/target/release/bundle ]; then
-            cp -R src-tauri/target/release/bundle/* release-artifacts/ 2>/dev/null || true
-          fi
-          if [ -d src-tauri/target/release ]; then
-            find src-tauri/target/release -maxdepth 1 \( -name "*.exe" -o -name "custom-sda" \) -exec cp {} release-artifacts/ \; 2>/dev/null || true
-          fi
-          ls -laR release-artifacts || true
+        run: bash scripts/stage-desktop-artifacts.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: custom-sda-desktop-${{ matrix.id }}
-          path: release-artifacts/**
+          path: release-artifacts
           if-no-files-found: error
 
   android:
@@ -117,6 +119,14 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       - uses: android-actions/setup-android@v3
+        with:
+          # Google removed the legacy `tools` package; default v3 install fails on sdkmanager.
+          packages: platform-tools
+
+      - name: Install Android SDK (API 37)
+        shell: pwsh
+        run: |
+          sdkmanager --install "platforms;android-37" "build-tools;35.0.0"
 
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -180,8 +190,7 @@ jobs:
         run: npm run tauri ios init -- --ci
 
       - name: CocoaPods
-        run: |
-          cd src-tauri/gen/apple && pod install
+        run: bash scripts/ios-pod-install.sh
 
       - run: npm run build
 
@@ -198,5 +207,55 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: custom-sda-ios-simulator
-          path: release/ios-artifacts/**
+          path: release/ios-artifacts
           if-no-files-found: warn
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [desktop, android, ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag from package.json
+        id: meta
+        shell: bash
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "tag=v${ver}" >> "$GITHUB_OUTPUT"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: custom-sda-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          mapfile -t files < <(find release-assets -type f)
+          if ((${#files[@]} == 0)); then
+            echo "::error::No files to upload"
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — replacing assets"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            echo "Creating release $TAG at commit $GITHUB_SHA"
+            gh release create "$TAG" \
+              --title "Custom SDA $TAG" \
+              --generate-notes \
+              --target "$GITHUB_SHA" \
+              "${files[@]}"
+          fi

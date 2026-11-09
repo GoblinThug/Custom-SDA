@@ -18,8 +18,8 @@ if [[ ! -d "$ROOT/src-tauri/gen/apple" ]]; then
 fi
 
 if [[ -f "$ROOT/src-tauri/gen/apple/Podfile" ]]; then
-  echo "Installing CocoaPods…"
-  (cd "$ROOT/src-tauri/gen/apple" && pod install)
+  echo "CocoaPods (if needed)…"
+  bash "$ROOT/scripts/ios-pod-install.sh"
 fi
 
 EXTRA_ARGS=()

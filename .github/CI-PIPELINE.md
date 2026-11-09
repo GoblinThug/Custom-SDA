@@ -6,9 +6,23 @@
 
 | Событие | Действие |
 |---------|----------|
-| **Push в ветку `main`** | Автоматически: desktop + Android + iOS |
-| **Actions → Build release (all platforms) → Run workflow** | Ручной запуск, можно отключить отдельные платформы |
-| **Push тега `v*`** (например `v0.0.2`) | Полная сборка всех включённых job’ов |
+| **Push в ветку `main`** | Сборка всех платформ → **автоматический Release** (тег `v` + версия из `package.json`) |
+| **Actions → Build release (all platforms) → Run workflow** | Только сборка; **Release не создаётся** |
+
+## Автоматическая публикация (без ручного `git tag`)
+
+Версия релиза берётся из **`package.json` → `version`**. Сейчас **`0.0.1`** → GitHub Release **`v0.0.1`**.
+
+1. Поменяй версию в `package.json` и `src-tauri/tauri.conf.json` (например `0.0.2`).
+2. Закоммить и **`git push origin main`**.
+3. Дождись зелёных job’ов + **Publish GitHub Release**.
+4. GitHub **сам** создаст тег **`v0.0.2`** и страницу **Releases** с установщиками.
+
+Повторный push в `main` с **той же** версией: сборка заново, файлы в существующем релизе **перезапишутся** (`--clobber`).
+
+Ручные теги для CI **не нужны** (workflow на `push: tags` отключён, чтобы не гонять двойную сборку).
+
+**Настройка репо (один раз):** Settings → Actions → General → Workflow permissions → **Read and write permissions**.
 
 ## Сводка платформ
 
@@ -19,6 +33,10 @@
 | **macOS** | `macos-latest` | `npm run tauri build` | `.dmg`, `.app` |
 | **Android** | `windows-latest` | `npm run build:apk` | `release/Custom SDA_<версия>_arm64-setup.apk` |
 | **iOS** | `macos-latest` | `npm run build:ios` | `.app` для симулятора (по умолчанию; не IPA) |
+
+**Android CI:** `setup-android` с `packages: platform-tools` (пакет `tools` снят Google) + `sdkmanager platforms;android-37`.
+
+**iOS CI:** `pod install` только при реальных `pod` в Podfile; пустой Podfile с `*_macOS` без таргета в Xcode больше не валит job.
 
 > iOS на реальное устройство / TestFlight требует Apple Signing — в CI по умолчанию только **simulator**. См. [scripts/setup-ios.md](../scripts/setup-ios.md).
 
@@ -118,17 +136,21 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
 После добавления секретов нужно доработать шаги signing в workflow (сейчас не настроено).
 
+## Desktop: где лежит `target`
+
+В репозитории [`.cargo/config.toml`](../.cargo/config.toml) задано `target-dir = "target"` в **корне** проекта (не `src-tauri/target`). CI собирает артефакты скриптом `scripts/stage-desktop-artifacts.sh`.
+
 ## Артефакты после CI
 
 | Имя artifact | Содержимое |
 |--------------|------------|
 | `custom-sda-desktop-windows` | Installer / exe |
 | `custom-sda-desktop-linux` | deb / AppImage |
-| `custom-sda-desktop-macos` | dmg / app |
+| `custom-sda-desktop-macos` | dmg / app / zip |
 | `custom-sda-android-arm64` | APK |
 | `custom-sda-ios-simulator` | `.app` для симулятора |
 
-Скачивание: **Actions → выбранный run → Artifacts**.
+- **Push в `main`:** файлы в **Releases → v0.0.1** (и дубль в **Actions → Artifacts** на время хранения).
 
 ## Версии в сборке
 
