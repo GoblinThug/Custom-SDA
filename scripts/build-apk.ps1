@@ -11,13 +11,68 @@ function Invoke-ProcessStream {
         [Parameter(Mandatory)][string]$FilePath,
         [Parameter(Mandatory)][string[]]$ArgumentList
     )
+    # Do not use `& ... 2>&1` under $ErrorActionPreference Stop — pwsh turns stderr
+    # (tauri/cargo Info/Debug lines) into terminating NativeCommandError.
     $log = [System.Collections.Generic.List[string]]::new()
-    & $FilePath @ArgumentList 2>&1 | ForEach-Object {
-        $text = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.ToString() } else { "$_" }
-        Write-Host $text
-        [void]$log.Add($text)
+    $quotedArgs = ($ArgumentList | ForEach-Object {
+        if ($_ -match '[\s"]') {
+            '"' + ($_ -replace '"', '\"') + '"'
+        } else {
+            $_
+        }
+    }) -join " "
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    # .cmd/.bat need cmd.exe when UseShellExecute=false (required for stream redirect).
+    if ($FilePath -match '\.(cmd|bat)$') {
+        $psi.FileName = $env:ComSpec
+        $psi.Arguments = "/d /c `"$FilePath`" $quotedArgs"
+    } else {
+        $psi.FileName = $FilePath
+        $psi.Arguments = $quotedArgs
     }
-    $exit = $LASTEXITCODE
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = (Get-Location).Path
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $proc.EnableRaisingEvents = $true
+
+    $outHandler = {
+        if (-not [string]::IsNullOrEmpty($EventArgs.Data)) {
+            Write-Host $EventArgs.Data
+            [void]$Event.MessageData.Add($EventArgs.Data)
+        }
+    }
+    $errHandler = {
+        if (-not [string]::IsNullOrEmpty($EventArgs.Data)) {
+            Write-Host $EventArgs.Data
+            [void]$Event.MessageData.Add($EventArgs.Data)
+        }
+    }
+
+    $outSub = Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action $outHandler -MessageData $log
+    $errSub = Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -Action $errHandler -MessageData $log
+    try {
+        [void]$proc.Start()
+        $proc.BeginOutputReadLine()
+        $proc.BeginErrorReadLine()
+        while (-not $proc.HasExited) {
+            Start-Sleep -Milliseconds 200
+        }
+        # Drain remaining async events
+        Start-Sleep -Milliseconds 300
+        $exit = $proc.ExitCode
+    } finally {
+        Unregister-Event -SourceIdentifier $outSub.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $errSub.Name -ErrorAction SilentlyContinue
+        Remove-Job $outSub -Force -ErrorAction SilentlyContinue
+        Remove-Job $errSub -Force -ErrorAction SilentlyContinue
+        $proc.Dispose()
+    }
     if ($null -eq $exit) { $exit = 0 }
     return @{ ExitCode = $exit; Log = ($log -join [Environment]::NewLine) }
 }
