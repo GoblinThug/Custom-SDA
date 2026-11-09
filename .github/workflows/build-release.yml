@@ -31,6 +31,7 @@ env:
   # nttld/setup-ndk expects release tags (r26b), not the numeric build id (26.1.10909125).
   ANDROID_NDK_VERSION: r26b
   JAVA_VERSION: "17"
+  ANDROID_COMPILE_SDK: "35"
 
 jobs:
   desktop:
@@ -83,9 +84,16 @@ jobs:
         if: matrix.id == 'macos'
         shell: bash
         run: |
+          set +e
           app=$(find target src-tauri/target -type d -name '*.app' 2>/dev/null | head -1)
-          if [[ -n "$app" ]]; then
-            codesign --force --deep --sign - "$app"
+          set -e
+          if [[ -z "$app" ]]; then
+            echo "No .app bundle — skip codesign (stage step will collect dmg/exe artifacts if present)"
+            exit 0
+          fi
+          echo "Ad-hoc signing: $app"
+          if ! codesign --force --deep --sign - "$app"; then
+            echo "::warning::codesign failed; upload may still work for unsigned .app/dmg"
           fi
 
       - name: Stage desktop artifacts
@@ -123,10 +131,11 @@ jobs:
           # Google removed the legacy `tools` package; default v3 install fails on sdkmanager.
           packages: platform-tools
 
-      - name: Install Android SDK (API 37)
+      - name: Install Android SDK platform
         shell: pwsh
         run: |
-          sdkmanager --install "platforms;android-37" "build-tools;35.0.0"
+          $api = $env:ANDROID_COMPILE_SDK
+          sdkmanager --install "platforms;android-$api" "build-tools;35.0.0"
 
       - uses: nttld/setup-ndk@v1
         id: setup-ndk

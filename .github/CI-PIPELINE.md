@@ -34,7 +34,7 @@
 | **Android** | `windows-latest` | `npm run build:apk` | `release/Custom SDA_<версия>_arm64-setup.apk` |
 | **iOS** | `macos-latest` | `npm run build:ios` | `.app` для симулятора (по умолчанию; не IPA) |
 
-**Android CI:** `setup-android` с `packages: platform-tools` (пакет `tools` снят Google) + `sdkmanager platforms;android-37`.
+**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-35` (API 37 в CI репозитории Google часто ещё нет).
 
 **iOS CI:** `pod install` только при реальных `pod` в Podfile; пустой Podfile с `*_macOS` без таргета в Xcode больше не валит job.
 
