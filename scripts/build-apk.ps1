@@ -1,6 +1,31 @@
 # Build arm64 Android APK on Windows without Developer Mode (copies instead of symlinks).
 $ErrorActionPreference = "Stop"
+# GitHub Actions pwsh: rustc/tauri log to stderr; without this, *>&1 still throws NativeCommandError.
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+
+function Invoke-External {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [string[]]$ArgumentList = @()
+    )
+    $argText = ($ArgumentList | ForEach-Object {
+        if ($_ -match '\s') { "`"$_`"" } else { $_ }
+    }) -join " "
+    $cmd = "`"$FilePath`" $argText".Trim()
+    $logFile = Join-Path $env:TEMP ("custom-sda-exec-{0}.log" -f [guid]::NewGuid().ToString("n"))
+    $exit = 0
+    try {
+        & cmd.exe /c "$cmd > `"$logFile`" 2>&1"
+        $exit = $LASTEXITCODE
+        $log = if (Test-Path $logFile) { Get-Content -LiteralPath $logFile -Raw } else { "" }
+    } finally {
+        Remove-Item -LiteralPath $logFile -Force -ErrorAction SilentlyContinue
+    }
+    return @{ ExitCode = $exit; Log = $log }
+}
 
 function Copy-JniWithRetry {
     param(
@@ -114,8 +139,14 @@ try {
     if (-not $env:CI) {
         $env:CI = "true"
     }
-    $rustLog = & $tauri android build --target aarch64 --ci *>&1 | Out-String
-    $rustExit = $LASTEXITCODE
+    $rustResult = Invoke-External -FilePath $tauri -ArgumentList @(
+        "android", "build", "--target", "aarch64", "--ci"
+    )
+    $rustLog = $rustResult.Log
+    $rustExit = $rustResult.ExitCode
+    if ($rustLog) {
+        Write-Host $rustLog
+    }
 } finally {
     Pop-Location
 }
@@ -148,9 +179,15 @@ Copy-Item -Force (Join-Path $root "src-tauri\tauri.conf.json") $assets
 $androidDir = Join-Path $root "src-tauri\gen\android"
 Push-Location $androidDir
 try {
-    & .\gradlew.bat assembleArm64Release -x rustBuildArm64Release -x rustBuildUniversalRelease
-    if ($LASTEXITCODE -ne 0) {
-        throw "Gradle assembleArm64Release failed (exit $LASTEXITCODE)."
+    $gradle = Join-Path $androidDir "gradlew.bat"
+    $gradleResult = Invoke-External -FilePath $gradle -ArgumentList @(
+        "assembleArm64Release",
+        "-x", "rustBuildArm64Release",
+        "-x", "rustBuildUniversalRelease"
+    )
+    if ($gradleResult.ExitCode -ne 0) {
+        if ($gradleResult.Log) { Write-Host $gradleResult.Log }
+        throw "Gradle assembleArm64Release failed (exit $($gradleResult.ExitCode))."
     }
 } finally {
     Pop-Location
