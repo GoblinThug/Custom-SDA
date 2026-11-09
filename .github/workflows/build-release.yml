@@ -30,7 +30,8 @@ env:
   NODE_VERSION: "20"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
-  ANDROID_NDK_VERSION: "26.1.10909125"
+  # nttld/setup-ndk expects release tags (r26b), not the numeric build id (26.1.10909125).
+  ANDROID_NDK_VERSION: r26b
   JAVA_VERSION: "17"
 
 jobs:
@@ -115,12 +116,14 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
+      - uses: android-actions/setup-android@v3
+
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
           ndk-version: ${{ env.ANDROID_NDK_VERSION }}
-
-      - uses: android-actions/setup-android@v3
+          link-to-sdk: true
+          local-cache: true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
