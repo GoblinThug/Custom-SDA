@@ -44,7 +44,7 @@ Android/iOS: этот канал не используется (магазин /
 | **Android** | `windows-latest` | `npm run build:apk` | `release/Custom SDA_<версия>_arm64-setup.apk` |
 | **iOS** | `macos-latest` | `npm run build:ios` | `.app` для симулятора (по умолчанию; не IPA) |
 
-**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-36` (Tauri 2 plugins требуют compileSdk ≥ 36).
+**Android CI:** `setup-android` с `packages: platform-tools` + `platforms;android-36` (Tauri 2 plugins требуют compileSdk ≥ 36). Rust **1.90+** (`rust-toolchain.toml`, biometric). Сборка `.so` — `tauri android android-studio-script` (см. `scripts/build-apk.ps1`).
 
 **iOS CI:** `pod install` только при реальных `pod` в Podfile; пустой Podfile с `*_macOS` без таргета в Xcode больше не валит job.
 

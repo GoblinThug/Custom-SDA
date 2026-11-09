@@ -14,18 +14,17 @@ use vault::vault_path;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_os::init())
-        .setup(|app| {
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            {
-                app.handle()
-                    .plugin(tauri_plugin_biometric::Builder::new().build())?;
-            }
+        .plugin(tauri_plugin_os::init());
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let builder = builder.plugin(tauri_plugin_biometric::init());
+
+    builder
+        .setup(|app| {
             let app_data = app
                 .path()
                 .app_data_dir()

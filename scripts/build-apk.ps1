@@ -29,49 +29,111 @@ function Copy-JniWithRetry {
     }
 }
 
+function Find-AndroidReleaseSo {
+    param([string]$ProjectRoot)
+    $relPaths = @(
+        "target\aarch64-linux-android\release\libcustom_sda_lib.so",
+        "src-tauri\target\aarch64-linux-android\release\libcustom_sda_lib.so"
+    )
+    foreach ($rel in $relPaths) {
+        $p = Join-Path $ProjectRoot $rel
+        if (Test-Path $p) { return $p }
+    }
+    $found = Get-ChildItem -Path $ProjectRoot -Recurse -Filter "libcustom_sda_lib.so" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "aarch64-linux-android[\\/]release" } |
+        Select-Object -First 1
+    if ($found) { return $found.FullName }
+    return $null
+}
+
+function Resolve-NdkLibcxx {
+    param([string]$NdkHome)
+    $prebuiltRoot = Join-Path $NdkHome "toolchains\llvm\prebuilt"
+    if (-not (Test-Path $prebuiltRoot)) {
+        throw "NDK prebuilt toolchain missing under $prebuiltRoot"
+    }
+    $hostDir = Get-ChildItem -Path $prebuiltRoot -Directory | Select-Object -First 1
+    if (-not $hostDir) {
+        throw "No LLVM prebuilt host dir in $prebuiltRoot"
+    }
+    $libcxx = Join-Path $hostDir.FullName "sysroot\usr\lib\aarch64-linux-android\libc++_shared.so"
+    if (-not (Test-Path $libcxx)) {
+        throw "libc++_shared.so not found at $libcxx"
+    }
+    return $libcxx
+}
+
 if (-not $env:ANDROID_HOME) {
     $env:ANDROID_HOME = "$env:USERPROFILE\Android\Sdk"
 }
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+
 $bundledJdk = "C:\Program Files\Java\jdk-25.0.4.1"
 if (Test-Path $bundledJdk) {
     $env:JAVA_HOME = $bundledJdk
 } elseif (-not $env:JAVA_HOME -or -not (Test-Path $env:JAVA_HOME)) {
     throw "JAVA_HOME not set and bundled JDK not found at $bundledJdk. Install JDK 17+ or set JAVA_HOME (CI: setup-java)."
 }
-if (-not $env:NDK_HOME) {
-    $env:NDK_HOME = Join-Path $env:ANDROID_HOME "ndk\26.1.10909125"
-}
 
+if (-not $env:NDK_HOME -or -not (Test-Path $env:NDK_HOME)) {
+    $fallback = Join-Path $env:ANDROID_HOME "ndk\26.1.10909125"
+    if (Test-Path $fallback) {
+        $env:NDK_HOME = $fallback
+    } else {
+        $discovered = Get-ChildItem -Path (Join-Path $env:ANDROID_HOME "ndk") -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+        if ($discovered) {
+            $env:NDK_HOME = $discovered.FullName
+        }
+    }
+}
+if (-not $env:NDK_HOME -or -not (Test-Path $env:NDK_HOME)) {
+    throw "NDK_HOME not set. Set NDK_HOME or install NDK (CI: nttld/setup-ndk)."
+}
+$env:ANDROID_NDK_HOME = $env:NDK_HOME
+$env:ANDROID_NDK_ROOT = $env:NDK_HOME
+Write-Host "Using NDK_HOME=$($env:NDK_HOME)"
+
+$rustLog = ""
+$rustExit = $null
 Push-Location $root
 try {
     npm run build
 
-    # Compiles libcustom_sda_lib.so for aarch64 (may fail after compile on symlink — ignore).
+    if (-not (Test-Path "src-tauri\gen\android\gradlew.bat")) {
+        throw "Android project missing. Run: npm run tauri android init -- --ci"
+    }
+
+    # Compiles libcustom_sda_lib.so (--apk is skipped; Gradle runs below and avoids jniLibs lock on CI).
+    Write-Host "Building Rust for aarch64-linux-android (release)..."
     $tauri = Join-Path $root "node_modules\.bin\tauri.cmd"
     if (-not (Test-Path $tauri)) {
         $tauri = Join-Path $root "node_modules\.bin\tauri"
     }
-    $prevEap = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        # Rust only — APK is assembled via gradlew below (--apk would run Gradle and lock jniLibs on CI).
-        $null = & $tauri android build --target aarch64 2>&1
-    } finally {
-        $ErrorActionPreference = $prevEap
+    if (-not $env:CI) {
+        $env:CI = "true"
     }
+    $rustLog = & $tauri android build --target aarch64 --ci *>&1 | Out-String
+    $rustExit = $LASTEXITCODE
 } finally {
     Pop-Location
 }
 
-$so = Join-Path $root "target\aarch64-linux-android\release\libcustom_sda_lib.so"
-if (-not (Test-Path $so)) {
-    throw "Missing $so - Rust Android build did not complete."
+$so = Find-AndroidReleaseSo -ProjectRoot $root
+if (-not $so) {
+    $detail = if ($rustLog) { "`n$rustLog" } else { "" }
+    $exitHint = if ($null -ne $rustExit) { " (tauri exit $rustExit)" } else { "" }
+    throw "Missing libcustom_sda_lib.so under target/aarch64-linux-android/release. Rust Android build did not complete$exitHint.$detail"
 }
+if ($rustExit -ne 0) {
+    Write-Warning "tauri android build exited $rustExit (common on Windows without Developer Mode symlinks); using $so"
+}
+Write-Host "Using native lib: $so"
 
 $jni = Join-Path $root "src-tauri\gen\android\app\src\main\jniLibs\arm64-v8a"
 $assets = Join-Path $root "src-tauri\gen\android\app\src\main\assets"
-$libcxx = Join-Path $env:NDK_HOME "toolchains\llvm\prebuilt\windows-x86_64\sysroot\usr\lib\aarch64-linux-android\libc++_shared.so"
+$libcxx = Resolve-NdkLibcxx -NdkHome $env:NDK_HOME
 
 New-Item -ItemType Directory -Force -Path $jni | Out-Null
 New-Item -ItemType Directory -Force -Path $assets | Out-Null

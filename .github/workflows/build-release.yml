@@ -145,8 +145,6 @@ jobs:
           local-cache: true
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
 
       - name: Environment (Android)
         shell: pwsh
@@ -155,6 +153,8 @@ jobs:
           echo "ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT"
           echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}"
           echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $env:GITHUB_ENV
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $env:GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $env:GITHUB_ENV
 
       - run: npm ci
 
