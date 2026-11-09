@@ -1320,7 +1320,7 @@ export default function App() {
             <IconRefresh />
             {t(lang, "checkUpdates")}
           </button>
-          <span>v.4.0.0</span>
+          <span>v.0.0.1</span>
         </footer>
       </div>
     </WindowFrame>

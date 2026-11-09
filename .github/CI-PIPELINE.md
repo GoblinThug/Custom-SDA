@@ -6,8 +6,9 @@
 
 | Событие | Действие |
 |---------|----------|
+| **Push в ветку `main`** | Автоматически: desktop + Android + iOS |
 | **Actions → Build release (all platforms) → Run workflow** | Ручной запуск, можно отключить отдельные платформы |
-| **Push тега `v*`** (например `v4.0.2`) | Полная сборка всех включённых job’ов |
+| **Push тега `v*`** (например `v0.0.2`) | Полная сборка всех включённых job’ов |
 
 ## Сводка платформ
 
@@ -149,7 +150,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 ```bash
 git init
 git add .
-git commit -m "Custom SDA 4.0.1"
+git commit -m "Custom SDA 0.0.1"
 git branch -M main
 git remote add origin https://github.com/<user>/<repo>.git
 git push -u origin main
