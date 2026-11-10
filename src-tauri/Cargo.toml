@@ -1,6 +1,6 @@
 [package]
 name = "custom-sda"
-version = "0.0.3"
+version = "0.0.4"
 description = "Modern Steam Desktop Authenticator"
 authors = ["Custom SDA"]
 edition = "2021"
