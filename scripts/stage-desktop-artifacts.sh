@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Collect Tauri desktop installers for GitHub Releases.
+# Collect Tauri desktop installers for GitHub Releases (not Cargo build-script EXEs).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/release-artifacts"
@@ -15,47 +15,52 @@ if ((${#SEARCH_ROOTS[@]} == 0)); then
   exit 1
 fi
 
+# Prefer Tauri's release/bundle tree (NSIS/MSI/DMG/deb/AppImage).
 while IFS= read -r -d '' bundle; do
-  cp -R "$bundle/." "$OUT/"
+  while IFS= read -r -d '' f; do
+    base="$(basename "$f")"
+    case "$base" in
+      build-script-build.exe|build_script_build*.exe) continue ;;
+      *.exe|*.msi|*.dmg|*.deb|*.AppImage|*.rpm|*.app.tar.gz) ;;
+      *) continue ;;
+    esac
+    dest="$OUT/$base"
+    if [[ -e "$dest" ]]; then
+      # Keep unique names if the same basename appears twice.
+      parent="$(basename "$(dirname "$f")")"
+      dest="$OUT/${parent}-$base"
+    fi
+    cp -f "$f" "$dest"
+  done < <(find "$bundle" -type f -print0 2>/dev/null || true)
 done < <(find "${SEARCH_ROOTS[@]}" -type d -name bundle -path '*/release/bundle' -print0 2>/dev/null || true)
 
+# Fallback: known installers under release/ (never under release/build/).
 while IFS= read -r -d '' f; do
-  cp -f "$f" "$OUT/"
+  base="$(basename "$f")"
+  case "$base" in
+    build-script-build.exe|build_script_build*.exe) continue ;;
+    custom-sda.exe|*-setup.exe|*.msi|*.dmg|*.deb|*.AppImage) ;;
+    *) continue ;;
+  esac
+  [[ -f "$OUT/$base" ]] || cp -f "$f" "$OUT/$base"
 done < <(find "${SEARCH_ROOTS[@]}" -type f \( \
-  -name 'custom-sda' -o -name 'custom-sda.exe' -o -name '*.exe' -o \
+  -name 'custom-sda.exe' -o -name '*-setup.exe' -o \
   -name '*.msi' -o -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \
-\) -path '*/release/*' -print0 2>/dev/null || true)
-
-while IFS= read -r -d '' app; do
-  name=$(basename "$app")
-  if [[ ! -e "$OUT/$name" ]]; then
-    cp -R "$app" "$OUT/"
-  fi
-done < <(find "${SEARCH_ROOTS[@]}" -type d -name '*.app' -print0 2>/dev/null || true)
+\) -path '*/release/*' ! -path '*/release/build/*' -print0 2>/dev/null || true)
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  app=$(find "$OUT" -maxdepth 4 -type d -name '*.app' -print -quit)
+  app=$(find "${SEARCH_ROOTS[@]}" -type d -name '*.app' -path '*/release/bundle/*' -print -quit 2>/dev/null || true)
   if [[ -z "$app" ]]; then
-    app=$(find "${SEARCH_ROOTS[@]}" -type d -name '*.app' -print -quit)
-    [[ -n "$app" ]] && cp -R "$app" "$OUT/"
+    app=$(find "${SEARCH_ROOTS[@]}" -type d -name '*.app' -path '*/release/*' -print -quit 2>/dev/null || true)
   fi
-  app=$(find "$OUT" -maxdepth 4 -type d -name '*.app' -print -quit)
   if [[ -n "$app" ]]; then
     ditto -c -k --sequesterRsrc --keepParent "$app" "$OUT/custom-sda-macos-app.zip"
   fi
 fi
 
-# Flatten nested installers to OUT root (unique names)
-while IFS= read -r -d '' f; do
-  base="$(basename "$f")"
-  if [[ ! -f "$OUT/$base" ]]; then
-    cp -f "$f" "$OUT/$base"
-  fi
-done < <(find "$OUT" -type f \( -name '*.AppImage' -o -name '*-setup.exe' -o -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' \) -print0 2>/dev/null || true)
-
-if [[ -z "$(find "$OUT" -mindepth 1 -print -quit)" ]]; then
-  echo "::error::No desktop artifacts found"
-  find "${SEARCH_ROOTS[@]}" -path '*/release/*' \( -type f -o -type d \) 2>/dev/null | head -100 || true
+if [[ -z "$(find "$OUT" -type f -print -quit 2>/dev/null)" ]]; then
+  echo "::error::No desktop installers found"
+  find "${SEARCH_ROOTS[@]}" -path '*/release/bundle/*' -type f 2>/dev/null | head -100 || true
   exit 1
 fi
 

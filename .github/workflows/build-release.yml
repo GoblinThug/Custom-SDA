@@ -305,7 +305,12 @@ jobs:
           while IFS= read -r -d '' f; do
             base="$(basename "$f")"
             case "$base" in
-              *.exe|*.msi|*.dmg|*.deb|*.AppImage|*.apk|*.zip) ;;
+              build-script-build.exe|build_script_build*.exe|build-script-build*) continue ;;
+              *-setup.exe|*.msi|*.dmg|*.deb|*.AppImage|*.apk|*.zip|custom-sda.exe) ;;
+              *.exe)
+                # Reject Cargo/tooling EXEs; only keep obvious installers.
+                [[ "$base" == *setup* || "$base" == custom-sda.exe ]] || continue
+                ;;
               *) continue ;;
             esac
             if [[ -n "${seen[$base]:-}" ]]; then
