@@ -299,11 +299,30 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.meta.outputs.tag }}"
-          mapfile -t files < <(find release-assets -type f ! -name '*.app' )
+          # Only installers — not .app internals (Info.plist etc. collide on asset name).
+          mkdir -p release-upload
+          declare -A seen=()
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            case "$base" in
+              *.exe|*.msi|*.dmg|*.deb|*.AppImage|*.apk|*.zip) ;;
+              *) continue ;;
+            esac
+            if [[ -n "${seen[$base]:-}" ]]; then
+              echo "Skip duplicate asset name: $base ($f)"
+              continue
+            fi
+            seen[$base]=1
+            cp -f "$f" "release-upload/$base"
+          done < <(find release-assets -type f -print0)
+          mapfile -t files < <(find release-upload -type f | sort)
           if ((${#files[@]} == 0)); then
-            echo "::error::No files to upload"
+            echo "::error::No installer files to upload (.exe/.msi/.dmg/.deb/.AppImage/.apk/.zip)"
+            find release-assets -type f | head -100 || true
             exit 1
           fi
+          echo "Uploading:"
+          printf '  %s\n' "${files[@]}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — replacing assets"
             gh release upload "$TAG" "${files[@]}" --clobber
