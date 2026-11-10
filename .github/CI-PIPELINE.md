@@ -23,12 +23,14 @@ Android/iOS: этот канал не используется (магазин /
 
 ## Автоматическая публикация (без ручного `git tag`)
 
-Версия релиза берётся из **`package.json` → `version`**. Сейчас **`0.0.1`** → GitHub Release **`v0.0.1`**.
+Версия релиза берётся **только из `package.json` → `version`**. Сейчас **`0.0.3`** → GitHub Release **`v0.0.3`**.
 
-1. Поменяй версию в `package.json` и `src-tauri/tauri.conf.json` (например `0.0.2`).
+Перед сборкой `npm run sync:version` (или `prebuild`) копирует её в `tauri.conf.json` / `Cargo.toml` / `Cargo.lock`.
+
+1. Поменяй **только** `"version"` в `package.json` (или `npm version 0.0.4 --no-git-tag-version`).
 2. Закоммить и **`git push origin main`**.
 3. Дождись зелёных job’ов + **Publish GitHub Release**.
-4. GitHub **сам** создаст тег **`v0.0.2`** и страницу **Releases** с установщиками.
+4. GitHub **сам** создаст/обновит тег и страницу **Releases** с установщиками.
 
 Повторный push в `main` с **той же** версией: сборка заново, файлы в существующем релизе **перезапишутся** (`--clobber`).
 
@@ -167,7 +169,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 | `custom-sda-android-arm64` | APK |
 | `custom-sda-ios-simulator` | `.app` для симулятора |
 
-- **Push в `main`:** файлы в **Releases → v0.0.1** (и дубль в **Actions → Artifacts** на время хранения).
+- **Push в `main`:** файлы в **Releases → v0.0.3** (и дубль в **Actions → Artifacts** на время хранения).
 
 ## Версии в сборке
 
@@ -189,7 +191,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 ```bash
 git init
 git add .
-git commit -m "Custom SDA 0.0.1"
+git commit -m "Custom SDA 0.0.3"
 git branch -M main
 git remote add origin https://github.com/<user>/<repo>.git
 git push -u origin main

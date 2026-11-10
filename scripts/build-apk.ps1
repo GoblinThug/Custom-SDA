@@ -174,6 +174,7 @@ $rustLog = ""
 $rustExit = $null
 Push-Location $root
 try {
+    npm run sync:version
     npm run build
 
     if (-not (Test-Path "src-tauri\gen\android\gradlew.bat")) {

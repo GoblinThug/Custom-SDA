@@ -12,6 +12,8 @@ fi
 
 export CI="${CI:-true}"
 
+npm run sync:version
+
 if [[ ! -d "$ROOT/src-tauri/gen/apple" ]]; then
   echo "Initializing iOS project (src-tauri/gen/apple)…"
   npm run tauri ios init -- --ci

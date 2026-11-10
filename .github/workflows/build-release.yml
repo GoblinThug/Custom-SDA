@@ -72,6 +72,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Sync version from package.json
+        run: npm run sync:version
+
       - name: Tauri build
         env:
           CI: true
@@ -147,6 +150,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Sync version from package.json
+        run: npm run sync:version
+
       - name: Init Android project if missing
         shell: pwsh
         run: |
@@ -185,6 +191,9 @@ jobs:
           targets: aarch64-apple-ios-sim
 
       - run: npm ci
+
+      - name: Sync version from package.json
+        run: npm run sync:version
 
       - run: npm run build
 
