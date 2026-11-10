@@ -978,7 +978,8 @@ export default function App() {
     const showAuth =
       !showMobileSetupChoice &&
       !showMobileQrScan &&
-      (vaultStatus.exists ||
+      (!isMobileHost() ||
+        vaultStatus.exists ||
         mobileSetupMode === "fresh" ||
         (mobileSetupMode === "qr" && Boolean(pendingTransfer)));
 
