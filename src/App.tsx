@@ -14,7 +14,6 @@ import {
   Account,
   api,
   AppEvent,
-  Confirmation,
   GuardCode,
   SetupStatus,
   VaultSettings,
@@ -31,9 +30,9 @@ import {
   t,
 } from "./i18n";
 import {
+  EventStatusMark,
   IconChevronDown,
   IconCopy,
-  IconEventImportSuccess,
   IconEye,
   IconEyeSlash,
   IconFingerprint,
@@ -55,6 +54,8 @@ import {
   isBiometricUnlockStored,
   unlockPasswordViaBiometric,
 } from "./biometricVault";
+import { AccountAvatar } from "./AccountAvatar";
+import { ConfirmationsPage } from "./ConfirmationsPage";
 import { MobileTransferPage } from "./MobileTransfer";
 import { MobileTransferReceive } from "./MobileTransferReceive";
 import { MobileSetupChoice } from "./MobileSetupChoice";
@@ -93,45 +94,6 @@ type OnboardMode = "choice" | "mafile" | "steam" | null;
 
 function formatCode(code: string) {
   return code.split("").join(" ");
-}
-
-function normalizeAvatarSrc(url: string | null | undefined): string | null {
-  const raw = url?.trim();
-  if (!raw) {
-    return null;
-  }
-  if (raw.startsWith("http://")) {
-    return `https://${raw.slice("http://".length)}`;
-  }
-  return raw;
-}
-
-function AccountAvatar({
-  name,
-  avatarUrl,
-}: {
-  name: string;
-  avatarUrl: string | null;
-}) {
-  const [broken, setBroken] = useState(false);
-  const src = normalizeAvatarSrc(avatarUrl);
-  useEffect(() => {
-    setBroken(false);
-  }, [src]);
-  return (
-    <div className="avatar">
-      {src && !broken ? (
-        <img
-          src={src}
-          alt=""
-          referrerPolicy="no-referrer"
-          onError={() => setBroken(true)}
-        />
-      ) : (
-        (name[0] ?? "?").toUpperCase()
-      )}
-    </div>
-  );
 }
 
 const CODE_FONT_MAX = 42;
@@ -688,7 +650,6 @@ export default function App() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [guard, setGuard] = useState<GuardCode | null>(null);
   const [events, setEvents] = useState<AppEvent[]>([]);
-  const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
   const [settings, setSettings] = useState<VaultSettings | null>(null);
   const [copied, setCopied] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
@@ -896,18 +857,6 @@ export default function App() {
     }
   }
 
-  async function loadConfirmations() {
-    setBusy(true);
-    try {
-      setConfirmations(await api.confirmationsList());
-    } catch (e) {
-      notifyError(String(e));
-      setConfirmations([]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const mobileImportFocus =
     isMobileHost() &&
     status?.unlocked &&
@@ -1077,7 +1026,6 @@ export default function App() {
             onClick={() => {
               setForceOnboard(false);
               setTab("confirmations");
-              loadConfirmations();
             }}
             title={t(lang, "confirmations")}
           >
@@ -1234,10 +1182,7 @@ export default function App() {
               <div className="action-grid">
                 <button
                   className="action-tile"
-                  onClick={() => {
-                    setTab("confirmations");
-                    loadConfirmations();
-                  }}
+                  onClick={() => setTab("confirmations")}
                 >
                   <div className="action-icon">
                     <IconShield />
@@ -1253,21 +1198,19 @@ export default function App() {
               </div>
 
               <h3 className="section-title">{t(lang, "recentEvents")}</h3>
-              <div className="events">
-                {events.length === 0 && <div className="empty">{t(lang, "noEvents")}</div>}
-                {events.slice(0, 8).map((ev) => (
-                  <div className="event-item" key={ev.id}>
-                    {ev.kind === "import" && ev.success ? (
-                      <div className="event-icon-import">
-                        <IconEventImportSuccess />
-                      </div>
-                    ) : (
-                      <div className={`event-dot ${ev.success ? "ok" : "bad"}`}>✓</div>
-                    )}
-                    <div className="event-text">{ev.message}</div>
-                    <div className="event-time">{ev.time}</div>
-                  </div>
-                ))}
+              <div className="events-scroll">
+                <div className="events">
+                  {events.length === 0 && (
+                    <div className="empty">{t(lang, "noEvents")}</div>
+                  )}
+                  {events.map((ev) => (
+                    <div className="event-item" key={ev.id}>
+                      <EventStatusMark success={ev.success} />
+                      <div className="event-text">{ev.message}</div>
+                      <div className="event-time">{ev.time}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -1292,70 +1235,17 @@ export default function App() {
           )}
 
           {tab === "confirmations" && (
-            <div className="panel">
-              <div className="page-head">
-                <div className="page-head-text">
-                  <h2 className="page-title">{t(lang, "confirmations")}</h2>
-                  <p className="muted page-lead">{t(lang, "confirmationsLead")}</p>
-                </div>
-                <button
-                  type="button"
-                  className="copy-btn"
-                  disabled={busy}
-                  onClick={loadConfirmations}
-                  title={busy ? t(lang, "loading") : t(lang, "refresh")}
-                  aria-label={t(lang, "refreshList")}
-                >
-                  <IconRefresh />
-                </button>
-              </div>
-              {confirmations.length === 0 && !busy && (
-                <div className="surface-card confirmations-empty">
-                  <div className="empty">{t(lang, "noConfirmations")}</div>
-                </div>
-              )}
-              {confirmations.map((c) => (
-                <div className="conf-item" key={c.id}>
-                  <div className="conf-head">
-                    {c.icon ? <img className="conf-icon" src={c.icon} alt="" /> : null}
-                    <div>
-                      <div className="conf-title">{c.headline || c.type_name}</div>
-                      <div className="conf-summary">{c.summary.join(" · ")}</div>
-                    </div>
-                  </div>
-                  <div className="conf-actions">
-                    <button
-                      className="accept-btn"
-                      onClick={async () => {
-                        try {
-                          await api.confirmationAccept(c.id, c.nonce);
-                          await loadConfirmations();
-                          await refreshUnlocked();
-                        } catch (e) {
-                          notifyError(String(e));
-                        }
-                      }}
-                    >
-                      {c.accept_label || t(lang, "confirm")}
-                    </button>
-                    <button
-                      className="deny-btn"
-                      onClick={async () => {
-                        try {
-                          await api.confirmationDeny(c.id, c.nonce);
-                          await loadConfirmations();
-                          await refreshUnlocked();
-                        } catch (e) {
-                          notifyError(String(e));
-                        }
-                      }}
-                    >
-                      {c.cancel_label || t(lang, "deny")}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ConfirmationsPage
+              lang={lang}
+              selected={selected}
+              accounts={accounts}
+              onAccountsChanged={async () => {
+                await refreshUnlocked({ refreshAvatars: false, loadGuard: true });
+              }}
+              onError={(msg) => {
+                if (msg) notifyError(msg);
+              }}
+            />
           )}
 
           {tab === "mobile" && (

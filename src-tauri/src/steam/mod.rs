@@ -1,4 +1,5 @@
 pub mod avatar;
+pub mod session;
 pub mod setup;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};

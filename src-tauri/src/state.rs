@@ -4,6 +4,7 @@ use zeroize::Zeroizing;
 
 use crate::mobile_transfer::MobileTransferState;
 use crate::models::{AppEvent, StoredAccount};
+use crate::steam::session::SessionLoginSession;
 use crate::steam::setup::SteamSetupSession;
 use crate::vault::{self, VaultData, VaultError};
 
@@ -16,6 +17,7 @@ pub struct AppState {
     pub vault_path: PathBuf,
     pub inner: Mutex<Option<UnlockedVault>>,
     pub steam_setup: Mutex<Option<SteamSetupSession>>,
+    pub steam_session: Mutex<Option<SessionLoginSession>>,
     pub mobile_transfer: MobileTransferState,
 }
 
@@ -25,6 +27,7 @@ impl AppState {
             vault_path,
             inner: Mutex::new(None),
             steam_setup: Mutex::new(None),
+            steam_session: Mutex::new(None),
             mobile_transfer: MobileTransferState::new(),
         }
     }

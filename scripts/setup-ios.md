@@ -1,14 +1,14 @@
 # iOS setup for Custom SDA (Tauri 2)
 
-**Important:** iOS builds run **only on macOS**. From Windows you can use [GitHub Actions](#github-actions-from-windows) or a Mac with the steps below.
+**Important:** iOS builds run **only on macOS**. From Windows use **GitHub Actions** or a remote Mac — see [.github/CI-PIPELINE.md](../.github/CI-PIPELINE.md).
 
 ## Mac: requirements
 
 - macOS 12+
-- **Xcode** (full app from App Store, not only Command Line Tools)
+- **Xcode** (full app from App Store)
 - [Homebrew](https://brew.sh/) (recommended)
 - Node.js 20+
-- Rust (rustup)
+- Rust 1.90+ (rustup)
 
 ```bash
 xcode-select --install   # if needed
@@ -24,41 +24,46 @@ npm run tauri ios init -- --ci
 cd src-tauri/gen/apple && pod install && cd ../../..
 ```
 
+`src-tauri/gen/apple/` в `.gitignore` — на CI каталог создаётся заново.
+
 ## Build
 
-Simulator (no Apple Developer account):
+**Simulator** (no Apple Developer account):
 
 ```bash
 npm run build:ios
-# same as: bash scripts/build-ios.sh -- --target aarch64-sim
+# bash scripts/build-ios.sh -- --target aarch64-sim
 ```
 
-Physical device / IPA (signing in Xcode or env vars):
+**Physical device / IPA** (signing in Xcode):
 
 ```bash
 npm run build:ios:device
 ```
 
-Open Xcode project for signing:
+Open project for Team / bundle ID:
 
 ```bash
 npm run tauri ios build -- --open
 ```
 
-Set **Team** and bundle ID `com.customsda.desktop` (or change in `src-tauri/tauri.conf.json`).
+Bundle ID по умолчанию: `com.customsda.desktop` (`src-tauri/tauri.conf.json`).
 
-Deep link scheme `customsda://` is configured in `tauri.conf.json` (plugin deep-link).
+Deep link: scheme `customsda://` (plugin `deep-link`).
 
-## GitHub Actions (from Windows)
+## Windows → CI
 
-1. Create a Git repository and push the project to GitHub.
-2. Open **Actions** → **Build iOS** → **Run workflow**.
-3. Download the artifact `custom-sda-ios-*` (simulator `.app`).
+1. Push to GitHub `main` or run **Build release (all platforms)**.
+2. **macOS** job: `.dmg` в Release; iOS simulator `.app` в **Artifacts** (`custom-sda-ios-simulator`).
 
-Signing for TestFlight/App Store requires secrets (`APPLE_CERTIFICATE`, provisioning profile, etc.) — not configured in the default workflow.
+TestFlight / App Store need Apple signing secrets — not in default workflow.
 
 ## Troubleshooting
 
-- After upgrading Tauri: `rm -rf src-tauri/gen/apple && npm run tauri ios init -- --ci`
-- Pod errors: `cd src-tauri/gen/apple && pod repo update && pod install`
-- Icons: `npm run icon:all` (includes `.icns` for Apple targets)
+| Проблема | Действие |
+|----------|----------|
+| Stale gen after Tauri upgrade | `rm -rf src-tauri/gen/apple && npm run tauri ios init -- --ci` |
+| CocoaPods | `cd src-tauri/gen/apple && pod repo update && pod install` |
+| Icons | `npm run icon:all` |
+
+См. также [docs/README.md](../docs/README.md).

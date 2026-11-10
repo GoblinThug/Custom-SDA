@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Single source of truth: package.json → version
- * Syncs into src-tauri/tauri.conf.json, Cargo.toml, and Cargo.lock (package custom-sda).
+ * Syncs into src-tauri/tauri.conf.json, Cargo.toml, Cargo.lock, and version lines in *.md.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,5 +73,65 @@ try {
 } catch {
   // gen/android may be missing until first init
 }
+
+const versionTag = `v${version}`;
+
+/** Idempotent markdown updates (re-run safe after every version bump). */
+const markdownSync = [
+  {
+    rel: "README.md",
+    apply: (text) =>
+      text.replace(
+        /\*\*Версия:\*\* `[^`]+`/,
+        `**Версия:** \`${version}\``,
+      ),
+  },
+  {
+    rel: "docs/README.md",
+    apply: (text) =>
+      text.replace(
+        /\*\*Текущая версия:\*\* `[^`]+`/,
+        `**Текущая версия:** \`${version}\``,
+      ),
+  },
+  {
+    rel: ".github/CI-PIPELINE.md",
+    apply: (text) =>
+      text
+        .replace(
+          /Сейчас \*\*`[^`]+`\*\* → GitHub Release \*\*`v[^`]+`\*\*/,
+          `Сейчас **\`${version}\`** → GitHub Release **\`${versionTag}\`**`,
+        )
+        .replace(
+          /git commit -m "Custom SDA [^"]+"/,
+          `git commit -m "Custom SDA ${version}"`,
+        ),
+  },
+  {
+    rel: "docs/UPDATER.md",
+    apply: (text) =>
+      text.replace(
+        /Tag format: `v[^`]+` matching `package\.json`/,
+        `Tag format: \`${versionTag}\` matching \`package.json\``,
+      ),
+  },
+];
+
+function syncMarkdownDocs() {
+  for (const { rel, apply } of markdownSync) {
+    const filePath = join(root, rel);
+    if (!existsSync(filePath)) {
+      continue;
+    }
+    const before = readFileSync(filePath, "utf8");
+    const after = apply(before);
+    if (after !== before) {
+      writeFileSync(filePath, after);
+      console.log(`${rel} → ${version}`);
+    }
+  }
+}
+
+syncMarkdownDocs();
 
 console.log(`Synced version ${version} from package.json`);

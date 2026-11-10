@@ -82,7 +82,7 @@ export const IconFingerprint = () => <FontAwesomeIcon icon={faFingerprint} />;
 export const IconImport = () => <FontAwesomeIcon icon={faFileImport} />;
 export const IconLogin = () => <FontAwesomeIcon icon={faArrowRightToBracket} />;
 
-export function IconEventImportSuccess({ size = 20 }: { size?: number }) {
+export function IconEventSuccess({ size = 20 }: { size?: number }) {
   return (
     <svg
       width={size}
@@ -99,6 +99,38 @@ export function IconEventImportSuccess({ size = 20 }: { size?: number }) {
         fill="#28FB28"
       />
     </svg>
+  );
+}
+
+export function IconEventFailure({ size = 20 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M18.3334 10C18.3334 14.6024 14.6024 18.3333 10 18.3333C5.39765 18.3333 1.66669 14.6024 1.66669 10C1.66669 5.39763 5.39765 1.66667 10 1.66667C14.6024 1.66667 18.3334 5.39763 18.3334 10ZM7.47473 7.47473C7.71881 7.23065 8.11454 7.23065 8.35861 7.47473L10 9.11612L11.6414 7.47473C11.8855 7.23065 12.2812 7.23065 12.5253 7.47473C12.7694 7.71881 12.7694 8.11454 12.5253 8.35861L10.8839 10L12.5253 11.6414C12.7694 11.8855 12.7694 12.2812 12.5253 12.5253C12.2812 12.7694 11.8855 12.7694 11.6414 12.5253L10 10.8839L8.35861 12.5253C8.11454 12.7694 7.71881 12.7694 7.47473 12.5253C7.23065 12.2812 7.23065 11.8855 7.47473 11.6414L9.11612 10L7.47473 8.35861C7.23065 8.11454 7.23065 7.71881 7.47473 7.47473Z"
+        fill="#FB4B4B"
+      />
+    </svg>
+  );
+}
+
+/** Event list status icon — green/red rounded square (same for every event type). */
+export function EventStatusMark({ success }: { success: boolean }) {
+  return (
+    <div
+      className={`event-icon ${success ? "event-icon--ok" : "event-icon--bad"}`}
+      aria-hidden="true"
+    >
+      {success ? <IconEventSuccess /> : <IconEventFailure />}
+    </div>
   );
 }
 

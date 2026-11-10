@@ -64,7 +64,26 @@ const dict = {
     wiping: "Удаление…",
     wipeConfirm: "Удалить всё",
     noGuardHint: "Добавьте аккаунт, чтобы увидеть Steam Guard код.",
-    confirmationsLead: "Нужны identity_secret и активная Steam-сессия.",
+    confirmationsLead:
+      "Для трейдов и маркета нужны identity_secret и активная Steam-сессия. Войдите снова (как в классическом SDA) или импортируйте .maFile с токенами.",
+    confirmationsSetupTitle: "Нужна Steam-сессия",
+    confirmationsSetupLead:
+      "Выберите способ: повторный вход в Steam (обновит сессию для аккаунта в хранилище) или импорт .maFile.",
+    confirmationsReauth: "Войти снова",
+    confirmationsReauthHint:
+      "Логин и пароль Steam. Если аккаунт уже в приложении — код Guard покажем здесь.",
+    confirmationsUseMafile: "Загрузить maFiles",
+    confirmationsUseMafileHint:
+      "Импорт .maFile (желательно со свежими JWT-токенами, формат steamguard-cli).",
+    confirmationsSessionOk: "Сессия обновлена — загружаем подтверждения…",
+    sessionLeadDeviceCodeKnown:
+      "Введите код Steam Guard. Аккаунт найден в хранилище — актуальный код ниже.",
+    sessionLeadConfirmKnown:
+      "Подтвердите вход в Steam Guard / по email. Код Guard для этого аккаунта показан ниже.",
+    sessionLeadRefreshed: "Steam-сессия обновлена.",
+    sessionLeadNewAccountSetup:
+      "Аккаунта ещё нет в хранилище — продолжаем привязку authenticator (SMS).",
+    sessionLabelGuardCode: "Код Steam Guard",
     noConfirmations: "Нет ожидающих подтверждений",
     keysLead:
       "Импортируйте .maFile или войдите через Steam, чтобы добавить аккаунт в хранилище.",
@@ -312,7 +331,26 @@ const dict = {
     wiping: "Deleting…",
     wipeConfirm: "Delete everything",
     noGuardHint: "Add an account to see your Steam Guard code.",
-    confirmationsLead: "Requires identity_secret and an active Steam session.",
+    confirmationsLead:
+      "Trade and market confirmations need identity_secret and an active Steam session. Sign in again (like classic SDA) or import a .maFile with tokens.",
+    confirmationsSetupTitle: "Steam session required",
+    confirmationsSetupLead:
+      "Choose how to continue: sign in to Steam again (refreshes the session for a vault account) or import a .maFile.",
+    confirmationsReauth: "Sign in again",
+    confirmationsReauthHint:
+      "Steam username and password. If the account is already in the app, the Guard code is shown here.",
+    confirmationsUseMafile: "Load maFiles",
+    confirmationsUseMafileHint:
+      "Import a .maFile (preferably with fresh JWT tokens, steamguard-cli format).",
+    confirmationsSessionOk: "Session updated — loading confirmations…",
+    sessionLeadDeviceCodeKnown:
+      "Enter the Steam Guard code. This account is in your vault — the live code is below.",
+    sessionLeadConfirmKnown:
+      "Confirm the sign-in in Steam Guard / email. The Guard code for this account is shown below.",
+    sessionLeadRefreshed: "Steam session updated.",
+    sessionLeadNewAccountSetup:
+      "This account is not in the vault yet — continue authenticator setup (SMS).",
+    sessionLabelGuardCode: "Steam Guard code",
     noConfirmations: "No pending confirmations",
     keysLead:
       "Import a .maFile or sign in with Steam to add an account to the vault.",

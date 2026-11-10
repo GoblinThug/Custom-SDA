@@ -49,6 +49,19 @@ fn device() -> DeviceDetails {
 }
 
 impl SteamSetupSession {
+    /// Continue authenticator linking after credentials login already produced tokens.
+    pub fn from_tokens(transport: WebApiTransport, tokens: Tokens, account_name: String) -> Self {
+        Self {
+            transport,
+            login: None,
+            tokens: Some(tokens),
+            account: None,
+            server_time: 0,
+            account_name,
+            phase: "logged_in".into(),
+        }
+    }
+
     pub fn begin(account_name: String, password: String) -> Result<(Self, SetupStatus), String> {
         let transport = WebApiTransport::new(client()?);
         let mut login = UserLogin::new(transport.clone(), device());

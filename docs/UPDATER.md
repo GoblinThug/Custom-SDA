@@ -19,6 +19,8 @@ The official Tauri updater **requires** a minisign keypair to verify packages. T
 
 ## Release flow
 
-1. Bump `version` in `package.json` + `src-tauri/tauri.conf.json`.
+1. Bump `version` in `package.json` only, then run `npm run sync:version` (or rely on `prebuild` / CI).
 2. Push to `main` → CI builds and publishes GitHub Release assets.
-3. Installed apps see the new tag on **Check for updates**.
+3. Installed apps see the new tag on **Check for updates** (footer).
+
+Repository default: `GoblinThug/Custom-SDA`. Tag format: `v1.0.0` matching `package.json` (synced by `npm run sync:version`).

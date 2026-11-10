@@ -23,11 +23,11 @@ Android/iOS: этот канал не используется (магазин /
 
 ## Автоматическая публикация (без ручного `git tag`)
 
-Версия релиза берётся **только из `package.json` → `version`**. Сейчас **`0.0.3`** → GitHub Release **`v0.0.3`**.
+Версия релиза берётся **только из `package.json` → `version`**. Сейчас **`1.0.0`** → GitHub Release **`v1.0.0`**.
 
-Перед сборкой `npm run sync:version` (или `prebuild`) копирует её в `tauri.conf.json` / `Cargo.toml` / `Cargo.lock`.
+Перед сборкой `npm run sync:version` (или `prebuild`) копирует её в `tauri.conf.json` / `Cargo.toml` / `Cargo.lock` и обновляет **текущую** версию в `README.md`, `docs/README.md`, `docs/UPDATER.md`, этом файле.
 
-1. Поменяй **только** `"version"` в `package.json` (или `npm version 0.0.4 --no-git-tag-version`).
+1. Поменяй **только** `"version"` в `package.json` (или `npm version patch --no-git-tag-version`, затем `npm run sync:version`).
 2. Закоммить и **`git push origin main`**.
 3. Дождись зелёных job’ов + **Publish GitHub Release**.
 4. GitHub **сам** создаст/обновит тег и страницу **Releases** с установщиками.
@@ -169,12 +169,12 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 | `custom-sda-android-arm64` | APK |
 | `custom-sda-ios-simulator` | `.app` для симулятора |
 
-- **Push в `main`:** файлы в **Releases → v0.0.3** (и дубль в **Actions → Artifacts** на время хранения).
+- **Push в `main`:** файлы в **Releases** с тегом `v` + версия из `package.json` (и дубль в **Actions → Artifacts** на время хранения).
 
 ## Версии в сборке
 
-- Версия приложения в UI: `package.json` → `version` (и обновляйте `src-tauri/tauri.conf.json` при релизе).
-- Rust crate `Cargo.toml` `version` может отставать — для релиза лучше синхронизировать вручную.
+- Единый источник: `package.json` → `npm run sync:version` → `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`.
+- CI и `prebuild` вызывают sync перед сборкой; вручную править Tauri/Cargo не нужно, если версию меняли только в `package.json`.
 
 ## Что коммитить в git
 
@@ -191,7 +191,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 ```bash
 git init
 git add .
-git commit -m "Custom SDA 0.0.3"
+git commit -m "Custom SDA 1.0.0"
 git branch -M main
 git remote add origin https://github.com/<user>/<repo>.git
 git push -u origin main
@@ -214,6 +214,7 @@ git push -u origin main
 | `scripts/build-apk.ps1` | Android на Windows |
 | `scripts/build-ios.sh` | iOS на Mac |
 | `scripts/copy-release.mjs` | Копирование exe в `release/` |
+| `docs/README.md` | Указатель всей документации |
 | `docs/UPDATER.md` | Обновления через GitHub Releases |
 | `src-tauri/tauri.conf.json` | Общий конфиг Tauri |
 | `src-tauri/tauri.ios.conf.json` | iOS minimum version |

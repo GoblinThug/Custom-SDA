@@ -11,6 +11,7 @@ export type Account = {
   steam_id: string;
   avatar_url: string | null;
   has_session: boolean;
+  has_identity: boolean;
   selected: boolean;
 };
 
@@ -56,6 +57,18 @@ export type SetupStatus = {
   revocation_code: string | null;
 };
 
+export type SessionLoginStatus = {
+  phase: string;
+  message_key: string;
+  code_label_key: string | null;
+  needs_code: boolean;
+  known_account: boolean;
+  account_name: string;
+  steam_id: string | null;
+  finished: boolean;
+  continue_as_new_setup: boolean;
+};
+
 export type MobileTransfer = {
   qrPayload: string;
   qrUrl: string;
@@ -80,6 +93,11 @@ export const api = {
   accountSelect: (steamId: string) => invoke<void>("account_select", { steamId }),
   accountRemove: (steamId: string) => invoke<void>("account_remove", { steamId }),
   guardCode: () => invoke<GuardCode>("guard_code"),
+  guardCodeFor: (opts?: { steamId?: string; accountName?: string }) =>
+    invoke<GuardCode>("guard_code_for", {
+      steamId: opts?.steamId ?? null,
+      accountName: opts?.accountName ?? null,
+    }),
   importMafile: (path: string) => invoke<Account>("import_mafile", { path }),
   importMafileText: (contents: string) =>
     invoke<Account>("import_mafile_text", { contents }),
@@ -112,6 +130,12 @@ export const api = {
   steamSetupContinue: () => invoke<SetupStatus>("steam_setup_continue"),
   steamSetupSubmitSms: (sms: string) => invoke<Account>("steam_setup_submit_sms", { sms }),
   steamSetupCancel: () => invoke<void>("steam_setup_cancel"),
+  steamSessionBegin: (accountName: string, password: string) =>
+    invoke<SessionLoginStatus>("steam_session_begin", { accountName, password }),
+  steamSessionSubmitCode: (code: string) =>
+    invoke<SessionLoginStatus>("steam_session_submit_code", { code }),
+  steamSessionContinue: () => invoke<SessionLoginStatus>("steam_session_continue"),
+  steamSessionCancel: () => invoke<void>("steam_session_cancel"),
   mobileTransferPrepare: (steamId?: string) =>
     invoke<Omit<MobileTransfer, "createdAt">>("mobile_transfer_prepare", {
       steamId: steamId ?? null,

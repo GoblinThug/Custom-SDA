@@ -68,6 +68,8 @@ pub struct AccountDto {
     pub steam_id: String,
     pub avatar_url: Option<String>,
     pub has_session: bool,
+    /// identity_secret present — required for trade/market confirmations.
+    pub has_identity: bool,
     pub selected: bool,
 }
 

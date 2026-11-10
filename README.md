@@ -1,97 +1,89 @@
 # Custom SDA
 
-Современный кроссплатформенный аналог Steam Desktop Authenticator.
+Современный кроссплатформенный аналог **Steam Desktop Authenticator** (SDA).
 
 - **Backend:** Rust (Tauri 2)
 - **UI:** React + Vite + TypeScript
-- **Хранение:** только локально, всегда зашифровано (Argon2id + AES-256-GCM)
-- **Платформы:** Windows, macOS, Linux, Android (iOS — при сборке на macOS)
+- **Хранение:** только локально, зашифрованный vault (Argon2id + AES-256-GCM)
+- **Платформы:** Windows, macOS, Linux, Android; iOS — сборка на macOS или CI
 
-## Возможности v1
+**Версия:** `1.0.0` (источник — `package.json`; обновляется через `npm run sync:version`)
 
-- Генерация Steam Guard кодов
-- Несколько аккаунтов
-- Импорт `.maFile` / `shared_secret` (+ `identity_secret`)
-- Подтверждения трейдов/маркета (нужна JWT-сессия в `.maFile` формата steamguard-cli)
-- Обязательное шифрование паролем пользователя
-- UI по современному макету (RU)
+Полный указатель документации: [docs/README.md](docs/README.md)
+
+## Возможности
+
+- Steam Guard коды, несколько аккаунтов, переключение без лишних запросов
+- Импорт `.maFile` / JSON (`shared_secret`, `identity_secret`, токены)
+- **Подтверждения** трейдов и маркета (см. [docs/CONFIRMATIONS.md](docs/CONFIRMATIONS.md))
+- Повторный вход в Steam для обновления JWT (как «Login again» в SDA)
+- Шифрование паролем, автоблокировка, журнал событий на главной
+- Перенос vault на телефон (QR), deep link `customsda://`
+- Биометрическая разблокировка на Android / iOS
+- Темы и палитры, RU / EN
+- Desktop: проверка обновлений через GitHub Releases
 
 ## Требования
 
-- Node.js 18+
-- Rust (rustup)
-- Windows: [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) с workload **Desktop development with C++**
-- WebView2 Runtime (обычно уже есть на Windows 10/11)
+- Node.js 18+ (рекомендуется 20)
+- Rust **1.90+** (`rust-toolchain.toml`)
+- **Windows:** [Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (C++), WebView2
+- **Linux:** webkit2gtk, patchelf (см. CI-PIPELINE)
+- **macOS:** Xcode
+- **Android / iOS:** см. отдельные гайды
 
-## Запуск (desktop)
+## Быстрый старт (desktop)
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Сборка exe в папку `release/` проекта:
+Release на Windows (exe в `release/`):
 
 ```powershell
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-# убери старый AppData target, если задавал раньше:
-Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
-
 npm run build:exe
-# или debug:
-# npm run build:exe:debug
 ```
 
-Готовый файл: `release/custom-sda.exe`  
-(установщики NSIS/MSI тоже копируются туда, если Tauri их собрал)
-
-На Windows нужны Visual Studio Build Tools (C++) и WebView2. Если Smart App Control блокирует сборку на Desktop, временно:
+При блокировке Smart App Control:
 
 ```powershell
 $env:CARGO_TARGET_DIR = "$env:LOCALAPPDATA\custom-sda-cargo-target"
 npm run build:exe
 ```
 
-Скрипт всё равно скопирует exe в `release/`.
+Подробнее: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
-## Android
+## Мобильные платформы
 
-Rust targets уже добавлены. Полная инструкция: [scripts/setup-android.md](scripts/setup-android.md)
+| Платформа | Документация | Сборка |
+|-----------|--------------|--------|
+| Android | [scripts/setup-android.md](scripts/setup-android.md) | `npm run build:apk` |
+| iOS | [scripts/setup-ios.md](scripts/setup-ios.md) | `npm run build:ios` (macOS) |
 
-```bash
-# после установки Android Studio + SDK/NDK и ANDROID_HOME
-npm run tauri android init
-npm run tauri android dev
-```
+С Windows: CI собирает APK и macOS/iOS — [.github/CI-PIPELINE.md](.github/CI-PIPELINE.md).
 
-Release APK (Windows): `npm run build:apk`
+## Импорт аккаунта
 
-## iOS
+1. Вкладка с ключом → импорт файла или текста
+2. Для подтверждений желателен maFile из [steamguard-cli](https://github.com/dyc3/steamguard-cli) **с JWT tokens**
+3. Устаревшая сессия → вкладка **Подтверждения** → **Войти снова**
 
-Сборка **только на macOS** (Xcode, CocoaPods). На Windows команда `tauri ios` в CLI недоступна.
+## Безопасность (кратко)
 
-- Mac: [scripts/setup-ios.md](scripts/setup-ios.md) → `npm run build:ios` (симулятор)
-- С Windows: GitHub → **Actions** → **Build release (all platforms)** — см. [.github/CI-PIPELINE.md](.github/CI-PIPELINE.md)
+Локальный vault, секреты не отдаются в UI, потеря пароля = потеря vault. Детали: [docs/SECURITY.md](docs/SECURITY.md).
 
-## Безопасность
+## Обновления
 
-- Секреты не уходят в сеть для генерации кодов
-- На диске только `vault.csda` (ciphertext)
-- В UI не передаются `shared_secret` / `identity_secret`
-- Потеря пароля = потеря доступа к vault (храните revocation codes отдельно)
-- Перенос на телефон по QR: AES-256-GCM + отдельный 6-значный код (см. `src-tauri/src/mobile_transfer.rs`)
-- Android/iOS: опциональный вход по биометрии (Настройки → Безопасность), пароль проверяется перед включением
-- Desktop: обновления через GitHub Releases (`docs/UPDATER.md`)
-- Автоблокировка: **Настройки → Безопасность → Автоблокировка (сек)**
+Desktop: кнопка **Проверить обновления** в футере → установщик с GitHub. Без ключей minisign: [docs/UPDATER.md](docs/UPDATER.md).
 
-## Импорт
+## Релизы и CI
 
-1. Откройте вкладку с ключом
-2. Выберите `.maFile` или вставьте JSON / `shared_secret`
-3. Для подтверждений предпочтителен `.maFile` из [steamguard-cli](https://github.com/dyc3/steamguard-cli) с JWT `tokens`
+Версию меняйте в `package.json`, пуш в `main` → сборка и GitHub Release. [CHANGELOG.md](CHANGELOG.md) | [CONTRIBUTING.md](CONTRIBUTING.md)
 
-## Вне скоупа v1
+## Не в фокусе
 
-- Привязка нового authenticator через SMS
-- Облачный sync
-- Публикация в сторы
+- Регистрация нового authenticator через SMS
+- Облачная синхронизация
+- Публикация в Google Play / App Store «из коробки»
