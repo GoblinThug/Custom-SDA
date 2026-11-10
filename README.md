@@ -7,7 +7,7 @@
 - **Хранение:** только локально, зашифрованный vault (Argon2id + AES-256-GCM)
 - **Платформы:** Windows, macOS, Linux, Android; iOS — сборка на macOS или CI
 
-**Версия:** `1.0.0` (источник — `package.json`; обновляется через `npm run sync:version`)
+**Версия:** `1.0.1` (источник — `package.json`; обновляется через `npm run sync:version`)
 
 Полный указатель документации: [docs/README.md](docs/README.md)
 

@@ -7,7 +7,7 @@ use byteorder::{BigEndian, ByteOrder};
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use steamguard::transport::WebApiTransport;
-use steamguard::{Confirmer, SteamGuardAccount};
+use steamguard::{ConfirmationId, Confirmer, SteamGuardAccount};
 
 use crate::models::{ConfirmationDto, StoredAccount};
 
@@ -137,31 +137,15 @@ pub fn respond_confirmation(
         .map_err(|e| e.to_string())?;
     let transport = WebApiTransport::new(client);
     let confirmer = Confirmer::new(transport, &sg);
-
-    let stub = serde_json::json!({
-        "conf_type": 2,
-        "type_name": "",
-        "id": id,
-        "creator_id": "0",
-        "nonce": nonce,
-        "creation_time": 0,
-        "cancel": "Cancel",
-        "accept": "Accept",
-        "icon": null,
-        "multi": false,
-        "headline": "",
-        "summary": []
-    });
-    let conf: steamguard::Confirmation =
-        serde_json::from_value(stub).map_err(|e| e.to_string())?;
+    let conf_id = ConfirmationId::new(id, nonce);
 
     if accept {
         confirmer
-            .accept_confirmations(&[conf])
+            .accept_confirmation(conf_id)
             .map_err(|e| format!("не удалось подтвердить: {e}"))?;
     } else {
         confirmer
-            .deny_confirmations(&[conf])
+            .deny_confirmation(conf_id)
             .map_err(|e| format!("не удалось отклонить: {e}"))?;
     }
     Ok(())
