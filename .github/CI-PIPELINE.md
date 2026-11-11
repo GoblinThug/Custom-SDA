@@ -23,7 +23,7 @@ Android/iOS: этот канал не используется (магазин /
 
 ## Автоматическая публикация (без ручного `git tag`)
 
-Версия релиза берётся **только из `package.json` → `version`**. Сейчас **`1.0.2`** → GitHub Release **`v1.0.2`**.
+Версия релиза берётся **только из `package.json` → `version`**. Сейчас **`1.0.3`** → GitHub Release **`v1.0.3`**.
 
 Перед сборкой `npm run sync:version` (или `prebuild`) копирует её в `tauri.conf.json` / `Cargo.toml` / `Cargo.lock` и обновляет **текущую** версию в `README.md`, `docs/README.md`, `docs/UPDATER.md`, этом файле.
 
@@ -191,7 +191,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 ```bash
 git init
 git add .
-git commit -m "Custom SDA 1.0.2"
+git commit -m "Custom SDA 1.0.3"
 git branch -M main
 git remote add origin https://github.com/<user>/<repo>.git
 git push -u origin main
