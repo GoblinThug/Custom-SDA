@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -90,6 +91,18 @@ import {
 import "./App.css";
 
 const APP_TITLE = "Steam Desktop Authenticator";
+
+function AuthLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="auth-shell">
+      <div className="auth-screen">{children}</div>
+      <footer className="footer auth-footer">
+        <span aria-hidden="true" />
+        <span>v.{APP_VERSION}</span>
+      </footer>
+    </div>
+  );
+}
 
 type Tab = "home" | "keys" | "confirmations" | "mobile" | "settings";
 type OnboardMode = "choice" | "mafile" | "steam" | null;
@@ -249,7 +262,7 @@ function AuthGate({
   }
 
   return (
-    <div className="auth-screen">
+    <>
       <form className="auth-card" onSubmit={submit} noValidate>
         <div className="auth-heading">
           <div className="brand-mark">
@@ -360,7 +373,7 @@ function AuthGate({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -696,8 +709,8 @@ export default function App() {
   }, []);
 
   const finishAddAccount = useCallback(async () => {
-    setForceOnboard(false);
     await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
+    setForceOnboard(false);
     setTab("home");
   }, [refreshUnlocked]);
 
@@ -791,10 +804,10 @@ export default function App() {
   }, [status?.unlocked, pendingTransfer]);
 
   useEffect(() => {
-    if (showOnboard && tab !== "keys") {
+    if (status?.unlocked && accounts.length === 0 && tab !== "keys") {
       setTab("keys");
     }
-  }, [showOnboard, tab]);
+  }, [status?.unlocked, accounts.length, tab]);
 
   useEffect(() => {
     if (!status?.unlocked || !selected) return;
@@ -843,9 +856,9 @@ export default function App() {
     if (!path || Array.isArray(path)) return;
     setBusy(true);
     try {
-      await api.importMafile(path);
-      await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
-      setTab("home");
+      const added = await api.importMafile(path);
+      await api.accountSelect(added.steam_id);
+      await finishAddAccount();
     } catch (e) {
       notifyError(String(e));
     } finally {
@@ -863,9 +876,9 @@ export default function App() {
     return (
       <WindowFrame title={APP_TITLE}>
         <ToastViewport />
-        <div className="auth-screen">
+        <AuthLayout>
           <div className="muted">{t(lang, "loading")}</div>
-        </div>
+        </AuthLayout>
       </WindowFrame>
     );
   }
@@ -894,7 +907,7 @@ export default function App() {
                 qrPayload={pendingTransfer}
                 accounts={accounts}
                 onImported={() => {
-                  void refreshUnlocked();
+                  void finishAddAccount();
                 }}
                 onError={notifyError}
                 onClear={clearPendingTransfer}
@@ -937,6 +950,7 @@ export default function App() {
     return (
       <WindowFrame title={APP_TITLE}>
         <ToastViewport />
+        <AuthLayout>
         {showMobileSetupChoice ? (
           <MobileSetupChoice
             lang={lang}
@@ -946,7 +960,7 @@ export default function App() {
             }}
           />
         ) : showMobileQrScan ? (
-          <Suspense fallback={<div className="auth-screen muted">{t(lang, "loading")}</div>}>
+          <Suspense fallback={<div className="muted">{t(lang, "loading")}</div>}>
             <MobileQrScanner
               lang={lang}
               onPayload={(payload) => {
@@ -1003,10 +1017,9 @@ export default function App() {
             }
           />
         ) : (
-          <div className="auth-screen">
-            <div className="muted">{t(lang, "loading")}</div>
-          </div>
+          <div className="muted">{t(lang, "loading")}</div>
         )}
+        </AuthLayout>
       </WindowFrame>
     );
   }
@@ -1304,7 +1317,7 @@ export default function App() {
                     qrPayload={pendingTransfer}
                     accounts={accounts}
                     onImported={() => {
-                      void refreshUnlocked({ refreshAvatars: true, loadGuard: true });
+                      void finishAddAccount();
                     }}
                     onError={notifyError}
                     onClear={clearPendingTransfer}

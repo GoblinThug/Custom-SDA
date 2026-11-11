@@ -675,6 +675,24 @@ html.mobile-host body {
   flex: 1;
 }
 
+.auth-shell {
+  display: grid;
+  grid-template-rows: 1fr var(--footer);
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+}
+
+.auth-shell > .auth-screen {
+  min-height: 0;
+  height: 100%;
+}
+
+.auth-footer {
+  justify-content: flex-end;
+}
+
 .brand-mark {
   width: 24px;
   height: 24px;

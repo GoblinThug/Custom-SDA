@@ -34,4 +34,4 @@ The official Tauri updater **requires** a minisign keypair to verify packages. T
 2. Push to `main` → CI builds and publishes GitHub Release assets.
 3. Installed apps see the new tag on **Check for updates** (footer).
 
-Repository default: `GoblinThug/Custom-SDA`. Tag format: `v1.0.5` matching `package.json` (synced by `npm run sync:version`).
+Repository default: `GoblinThug/Custom-SDA`. Tag format: `v1.0.6` matching `package.json` (synced by `npm run sync:version`).
