@@ -8,11 +8,25 @@ const VAULT_BACKUP_FILTER = {
   extensions: ["csda", "json"],
 };
 
+/** Android maps `extensions` to MIME types; `.csda` has no mapping and breaks the picker. */
+const MOBILE_VAULT_IMPORT_FILTER = {
+  name: VAULT_BACKUP_FILTER.name,
+  extensions: ["application/json", "text/plain", "application/octet-stream"],
+};
+
 export async function pickVaultBackupFile(): Promise<string | null> {
-  const path = await open({
-    multiple: false,
-    filters: [VAULT_BACKUP_FILTER],
-  });
+  const path = await open(
+    isMobileHost()
+      ? {
+          multiple: false,
+          pickerMode: "document",
+          filters: [MOBILE_VAULT_IMPORT_FILTER],
+        }
+      : {
+          multiple: false,
+          filters: [VAULT_BACKUP_FILTER],
+        },
+  );
   if (!path || Array.isArray(path)) {
     return null;
   }
