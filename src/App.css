@@ -1809,6 +1809,15 @@ input[type="password"]::-ms-clear {
   flex-wrap: wrap;
 }
 
+.vault-backup-file-row {
+  align-items: stretch;
+}
+
+.vault-backup-file-row .vault-backup-path {
+  flex: 1;
+  min-width: 0;
+}
+
 .page-head {
   display: flex;
   align-items: flex-start;

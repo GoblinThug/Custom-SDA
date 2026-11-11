@@ -1,4 +1,4 @@
-export type MobileSetupMode = "qr" | "fresh";
+export type MobileSetupMode = "qr" | "fresh" | "backup";
 
 const STORAGE_KEY = "custom-sda-mobile-setup-mode";
 
@@ -7,7 +7,7 @@ export function loadMobileSetupMode(): MobileSetupMode | null {
     return null;
   }
   const v = localStorage.getItem(STORAGE_KEY);
-  if (v === "qr" || v === "fresh") {
+  if (v === "qr" || v === "fresh" || v === "backup") {
     return v;
   }
   return null;

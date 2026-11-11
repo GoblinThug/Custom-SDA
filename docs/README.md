@@ -14,4 +14,4 @@
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Как вносить изменения в проект |
 | [../CHANGELOG.md](../CHANGELOG.md) | История изменений |
 
-**Текущая версия:** `1.0.1` (`package.json` → `npm run sync:version` обновляет docs автоматически).
+**Текущая версия:** `1.0.2` (`package.json` → `npm run sync:version` обновляет docs автоматически).

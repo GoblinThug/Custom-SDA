@@ -10,6 +10,8 @@ import {
   Suspense,
 } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { VaultBackupPanel } from "./VaultBackupPanel";
+import { pickVaultBackupSavePath } from "./vaultBackup";
 import {
   Account,
   api,
@@ -200,6 +202,7 @@ function AuthGate({
   const [password2, setPassword2] = useState("");
   const [busy, setBusy] = useState(false);
   const [wipeConfirm, setWipeConfirm] = useState(false);
+  const [importBackup, setImportBackup] = useState(false);
   const [bioReady, setBioReady] = useState(false);
   const creating = !status.exists;
   const bioTried = useRef(false);
@@ -267,6 +270,21 @@ function AuthGate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bioReady, creating, busy]);
 
+  if (importBackup) {
+    return (
+      <VaultBackupPanel
+        lang={lang}
+        variant="setup"
+        onSuccess={(next) => {
+          clearBiometricUnlock();
+          setImportBackup(false);
+          onReady(next);
+        }}
+        onBack={() => setImportBackup(false)}
+      />
+    );
+  }
+
   async function wipeAll() {
     setBusy(true);
     try {
@@ -324,6 +342,17 @@ function AuthGate({
         <button className="primary-btn" disabled={busy}>
           {busy ? "..." : creating ? t(lang, "create") : t(lang, "enter")}
         </button>
+
+        {creating && (
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={busy}
+            onClick={() => setImportBackup(true)}
+          >
+            {t(lang, "mobileSetupBackup")}
+          </button>
+        )}
 
         {creating && onBackToSetup && (
           <button
@@ -416,7 +445,8 @@ function Onboarding({
     if (!path || Array.isArray(path)) return;
     setBusy(true);
     try {
-      await api.importMafile(path);
+      const added = await api.importMafile(path);
+      await api.accountSelect(added.steam_id);
       await onImported();
     } catch (e) {
       onError(String(e));
@@ -458,8 +488,11 @@ function Onboarding({
         setSetup(await api.steamSetupSubmitLoginCode(code));
         setCode("");
       } else if (setup.phase === "await_sms" || setup.phase === "await_transfer_sms") {
-        await api.steamSetupSubmitSms(code);
+        const added = await api.steamSetupSubmitSms(code);
         setCode("");
+        setSetup(null);
+        setMode("choice");
+        await api.accountSelect(added.steam_id);
         await onImported();
       }
     } catch (err) {
@@ -526,7 +559,8 @@ function Onboarding({
             onError(null);
             setBusy(true);
             try {
-              await api.importMafileText(maText);
+              const added = await api.importMafileText(maText);
+              await api.accountSelect(added.steam_id);
               await onImported();
             } catch (e) {
               onError(String(e));
@@ -716,6 +750,12 @@ export default function App() {
     }
   }, []);
 
+  const finishAddAccount = useCallback(async () => {
+    setForceOnboard(false);
+    await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
+    setTab("home");
+  }, [refreshUnlocked]);
+
   const refreshAvatarsInBackground = useCallback(() => {
     void api
       .accountsList(true)
@@ -806,6 +846,12 @@ export default function App() {
   }, [status?.unlocked, pendingTransfer]);
 
   useEffect(() => {
+    if (showOnboard && tab !== "keys") {
+      setTab("keys");
+    }
+  }, [showOnboard, tab]);
+
+  useEffect(() => {
     if (!status?.unlocked || !selected) return;
     const id = window.setInterval(() => {
       api.guardCode().then(setGuard).catch(() => undefined);
@@ -815,15 +861,20 @@ export default function App() {
 
   function handleVaultReady(next: VaultStatus) {
     setStatus(next);
-    if (!next.unlocked || !isMobileHost()) {
+    if (!next.unlocked) {
       return;
     }
-    const mode = loadMobileSetupMode();
-    if (mode === "qr") {
-      setTab("mobile");
-    } else if (mode === "fresh") {
-      setForceOnboard(true);
-      setTab("keys");
+    if (isMobileHost()) {
+      const mode = loadMobileSetupMode();
+      if (mode === "qr") {
+        setTab("mobile");
+      } else if (mode === "fresh") {
+        setForceOnboard(true);
+        setTab("keys");
+      } else if (mode === "backup") {
+        clearMobileSetupMode();
+        setMobileSetupMode(null);
+      }
     }
   }
 
@@ -924,9 +975,15 @@ export default function App() {
       !vaultStatus.exists &&
       mobileSetupMode === "qr" &&
       !pendingTransfer;
+    const showMobileBackup =
+      isMobileHost() &&
+      !vaultStatus.exists &&
+      mobileSetupMode === "backup" &&
+      !pendingTransfer;
     const showAuth =
       !showMobileSetupChoice &&
       !showMobileQrScan &&
+      !showMobileBackup &&
       (!isMobileHost() ||
         vaultStatus.exists ||
         mobileSetupMode === "fresh" ||
@@ -957,6 +1014,21 @@ export default function App() {
               onError={(msg) => notifyError(msg)}
             />
           </Suspense>
+        ) : showMobileBackup ? (
+          <VaultBackupPanel
+            lang={lang}
+            variant="setup"
+            onSuccess={(next) => {
+              clearBiometricUnlock();
+              clearMobileSetupMode();
+              setMobileSetupMode(null);
+              handleVaultReady(next);
+            }}
+            onBack={() => {
+              clearMobileSetupMode();
+              setMobileSetupMode(null);
+            }}
+          />
         ) : showAuth ? (
           <AuthGate
             status={vaultStatus}
@@ -1012,7 +1084,7 @@ export default function App() {
             <IconHome />
           </button>
           <button
-            className={`nav-btn ${tab === "keys" || showOnboard ? "active" : ""}`}
+            className={`nav-btn ${tab === "keys" ? "active" : ""}`}
             onClick={() => {
               setTab("keys");
               if (accounts.length === 0) setForceOnboard(true);
@@ -1070,14 +1142,10 @@ export default function App() {
         </nav>
 
         <main className="content">
-          {showOnboard && (tab === "home" || tab === "keys") && (
+          {showOnboard && tab === "keys" && (
             <Onboarding
               lang={lang}
-              onImported={async () => {
-                await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
-                setForceOnboard(false);
-                setTab("home");
-              }}
+              onImported={() => finishAddAccount()}
               onError={notifyError}
             />
           )}
@@ -1222,10 +1290,7 @@ export default function App() {
               busy={busy}
               onPickFile={pickMaFile}
               onAddAccount={() => setForceOnboard(true)}
-              onImported={async () => {
-                await refreshUnlocked({ refreshAvatars: true, loadGuard: true });
-                setTab("home");
-              }}
+              onImported={() => finishAddAccount()}
               onRemove={async (steamId) => {
                 await api.accountRemove(steamId);
                 await refreshUnlocked({ loadGuard: true });
@@ -1316,6 +1381,7 @@ export default function App() {
             <SettingsPage
               lang={lang}
               settings={settings}
+              accountCount={accounts.length}
               onLangPreview={setUiLang}
               onSave={async (next) => {
                 await api.settingsSet(next);
@@ -1331,6 +1397,11 @@ export default function App() {
                   showToast(t(lang, "bioReenableAfterPassword"), "success");
                 }
                 await refreshUnlocked();
+              }}
+              onVaultImported={async (next) => {
+                clearBiometricUnlock();
+                setStatus(next);
+                await refreshUnlocked({ loadGuard: true });
               }}
               onError={notifyError}
             />
@@ -1351,7 +1422,15 @@ export default function App() {
                   showToast(t(lang, "updateChecking"), "success");
                   const result = await checkAppUpdate();
                   if (result.status === "unsupported") {
-                    showToast(t(lang, "updateUnsupported"), "success");
+                    showToast(
+                      t(
+                        lang,
+                        result.platform === "ios"
+                          ? "updateUnsupportedIos"
+                          : "updateUnsupported",
+                      ),
+                      "success",
+                    );
                     return;
                   }
                   if (result.status === "upToDate") {
@@ -1362,10 +1441,11 @@ export default function App() {
                     notifyError(`${t(lang, "updateFailed")}: ${result.message}`);
                     return;
                   }
-                  const msg = t(lang, "updateAvailable").replace(
-                    "{version}",
-                    result.version,
-                  );
+                  const msg = (
+                    result.androidApk
+                      ? t(lang, "updateAvailableAndroid")
+                      : t(lang, "updateAvailable")
+                  ).replace("{version}", result.version);
                   if (!window.confirm(msg)) {
                     return;
                   }
@@ -1453,8 +1533,9 @@ function KeysPage({
             onError(null);
             setImporting(true);
             try {
-              await api.importMafileText(maText);
+              const added = await api.importMafileText(maText);
               setMaText("");
+              await api.accountSelect(added.steam_id);
               await onImported();
             } catch (e) {
               onError(String(e));
@@ -1498,18 +1579,22 @@ function KeysPage({
 function SettingsPage({
   lang: uiLang,
   settings,
+  accountCount,
   onLangPreview,
   onSave,
   onLock,
   onChangePassword,
+  onVaultImported,
   onError,
 }: {
   lang: Lang;
   settings: VaultSettings;
+  accountCount: number;
   onLangPreview: (lang: Lang) => void;
   onSave: (s: VaultSettings) => Promise<void>;
   onLock: () => Promise<void>;
   onChangePassword: (oldPassword: string, newPassword: string) => Promise<void>;
+  onVaultImported: (status: VaultStatus) => Promise<void>;
   onError: (msg: string | null) => void;
 }) {
   const [lang, setLang] = useState(settings.lang);
@@ -1534,6 +1619,8 @@ function SettingsPage({
   const [bioEnabled, setBioEnabled] = useState(false);
   const [bioBusy, setBioBusy] = useState(false);
   const [bioEnablePassword, setBioEnablePassword] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [importArmed, setImportArmed] = useState(false);
 
   const showBioSettings = isMobileHost() && bioHardware;
 
@@ -1640,86 +1727,84 @@ function SettingsPage({
         </button>
       </div>
 
-      <div className="surface-card stack">
-        <h3 className="inline-section-title">{t(uiLang, "encryptionSection")}</h3>
-        <p className="muted card-hint">{t(uiLang, "encryptionHint")}</p>
-
-        {showBioSettings && (
-          <div className="bio-settings stack">
-            <p className="muted card-hint">{t(uiLang, "bioSettingsHint")}</p>
-            <div className="bio-settings-status">
-              <IconFingerprint />
-              <span>
-                {bioEnabled ? t(uiLang, "bioSettingsOn") : t(uiLang, "bioSettingsOff")}
-              </span>
-            </div>
-            {bioEnabled ? (
+      {showBioSettings && (
+        <div className="surface-card stack bio-settings">
+          <h3 className="inline-section-title">{t(uiLang, "bioSection")}</h3>
+          <p className="muted card-hint">{t(uiLang, "bioSettingsHint")}</p>
+          <div className="bio-settings-status">
+            <IconFingerprint />
+            <span>
+              {bioEnabled ? t(uiLang, "bioSettingsOn") : t(uiLang, "bioSettingsOff")}
+            </span>
+          </div>
+          {bioEnabled ? (
+            <button
+              type="button"
+              className="ghost-btn danger-btn"
+              disabled={bioBusy}
+              onClick={() => {
+                setBioBusy(true);
+                try {
+                  clearBiometricUnlock();
+                  setBioEnabled(false);
+                  setBioEnablePassword("");
+                  showToast(t(uiLang, "bioDisabled"), "success");
+                } finally {
+                  setBioBusy(false);
+                }
+              }}
+            >
+              {t(uiLang, "bioSettingsDisable")}
+            </button>
+          ) : (
+            <>
+              <div>
+                <div className="label">{t(uiLang, "bioSettingsPasswordHint")}</div>
+                <PasswordField
+                  value={bioEnablePassword}
+                  onChange={setBioEnablePassword}
+                  lang={uiLang}
+                />
+              </div>
               <button
                 type="button"
-                className="ghost-btn danger-btn"
-                disabled={bioBusy}
-                onClick={() => {
+                className="primary-btn bio-unlock-btn"
+                disabled={bioBusy || bioEnablePassword.length < 6}
+                onClick={async () => {
+                  if (bioEnablePassword.length < 6) {
+                    onError(t(uiLang, "bioPasswordRequired"));
+                    return;
+                  }
                   setBioBusy(true);
+                  onError(null);
                   try {
-                    clearBiometricUnlock();
-                    setBioEnabled(false);
-                    setBioEnablePassword("");
-                    showToast(t(uiLang, "bioDisabled"), "success");
+                    await api.vaultVerifyPassword(bioEnablePassword);
+                    const ok = await enableBiometricUnlock(bioEnablePassword, uiLang);
+                    if (ok) {
+                      setBioEnabled(true);
+                      setBioEnablePassword("");
+                      showToast(t(uiLang, "bioEnabled"), "success");
+                    } else {
+                      showToast(t(uiLang, "bioUnavailable"), "error");
+                    }
+                  } catch (e) {
+                    onError(String(e));
                   } finally {
                     setBioBusy(false);
                   }
                 }}
               >
-                {t(uiLang, "bioSettingsDisable")}
+                <IconFingerprint />
+                {bioBusy ? "…" : t(uiLang, "bioSettingsEnable")}
               </button>
-            ) : (
-              <>
-                <div>
-                  <div className="label">{t(uiLang, "bioSettingsPasswordHint")}</div>
-                  <PasswordField
-                    value={bioEnablePassword}
-                    onChange={setBioEnablePassword}
-                    lang={uiLang}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="primary-btn bio-unlock-btn"
-                  disabled={bioBusy || bioEnablePassword.length < 6}
-                  onClick={async () => {
-                    if (bioEnablePassword.length < 6) {
-                      onError(t(uiLang, "bioPasswordRequired"));
-                      return;
-                    }
-                    setBioBusy(true);
-                    onError(null);
-                    try {
-                      await api.vaultVerifyPassword(bioEnablePassword);
-                      const ok = await enableBiometricUnlock(
-                        bioEnablePassword,
-                        uiLang,
-                      );
-                      if (ok) {
-                        setBioEnabled(true);
-                        setBioEnablePassword("");
-                        showToast(t(uiLang, "bioEnabled"), "success");
-                      } else {
-                        showToast(t(uiLang, "bioUnavailable"), "error");
-                      }
-                    } catch (e) {
-                      onError(String(e));
-                    } finally {
-                      setBioBusy(false);
-                    }
-                  }}
-                >
-                  <IconFingerprint />
-                  {bioBusy ? "…" : t(uiLang, "bioSettingsEnable")}
-                </button>
-              </>
-            )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="surface-card stack">
+        <h3 className="inline-section-title">{t(uiLang, "encryptionSection")}</h3>
+        <p className="muted card-hint">{t(uiLang, "encryptionHint")}</p>
 
         <div>
           <div className="label">{t(uiLang, "currentPassword")}</div>
@@ -1757,6 +1842,58 @@ function SettingsPage({
         <button className="primary-btn" onClick={() => onLock()}>
           {t(uiLang, "lockVault")}
         </button>
+      </div>
+
+      <div className="surface-card stack settings-backup-card">
+        <h3 className="inline-section-title">{t(uiLang, "vaultBackupSection")}</h3>
+        <p className="muted card-hint">{t(uiLang, "vaultBackupHint")}</p>
+
+        <button
+          type="button"
+          className="ghost-btn"
+          disabled={backupBusy}
+          onClick={async () => {
+            onError(null);
+            setBackupBusy(true);
+            try {
+              const path = await pickVaultBackupSavePath();
+              if (!path) {
+                return;
+              }
+              await api.vaultExport(path);
+              showToast(t(uiLang, "vaultBackupExportOk"), "success");
+            } catch (e) {
+              onError(String(e));
+            } finally {
+              setBackupBusy(false);
+            }
+          }}
+        >
+          {backupBusy ? "…" : t(uiLang, "vaultBackupExport")}
+        </button>
+
+        {!importArmed ? (
+          <button type="button" className="ghost-btn" onClick={() => setImportArmed(true)}>
+            {t(uiLang, "vaultBackupImportBtn")}
+          </button>
+        ) : (
+          <>
+            {accountCount > 0 && (
+              <p className="muted card-hint">{t(uiLang, "vaultBackupImportReplace")}</p>
+            )}
+            <VaultBackupPanel
+              lang={uiLang}
+              variant="settings"
+              onSuccess={async (next) => {
+                setImportArmed(false);
+                await onVaultImported(next);
+              }}
+            />
+            <button type="button" className="ghost-btn" onClick={() => setImportArmed(false)}>
+              {t(uiLang, "cancel")}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

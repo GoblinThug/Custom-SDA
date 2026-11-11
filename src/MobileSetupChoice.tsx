@@ -36,6 +36,14 @@ export function MobileSetupChoice({
             {t(lang, "mobileSetupFresh")}
           </button>
           <p className="muted card-hint">{t(lang, "mobileSetupFreshHint")}</p>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => onChoose("backup")}
+          >
+            {t(lang, "mobileSetupBackup")}
+          </button>
+          <p className="muted card-hint">{t(lang, "mobileSetupBackupHint")}</p>
         </div>
       </div>
     </div>

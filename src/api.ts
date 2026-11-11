@@ -88,6 +88,9 @@ export const api = {
     invoke<void>("vault_change_password", { oldPassword, newPassword }),
   vaultVerifyPassword: (password: string) =>
     invoke<void>("vault_verify_password", { password }),
+  vaultExport: (destPath: string) => invoke<void>("vault_export", { destPath }),
+  vaultImport: (sourcePath: string, password: string) =>
+    invoke<VaultStatus>("vault_import", { sourcePath, password }),
   accountsList: (refreshAvatars = false) =>
     invoke<Account[]>("accounts_list", { refreshAvatars }),
   accountSelect: (steamId: string) => invoke<void>("account_select", { steamId }),

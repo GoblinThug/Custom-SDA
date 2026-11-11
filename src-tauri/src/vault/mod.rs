@@ -201,6 +201,27 @@ pub fn save(path: &Path, password: &str, data: &VaultData) -> Result<(), VaultEr
     Ok(())
 }
 
+/// Validate and copy an on-disk vault backup into the live vault path.
+pub fn install_backup(source: &Path, dest: &Path, password: &str) -> Result<VaultData, VaultError> {
+    let (_key, data, _) = unlock(source, password)?;
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(source, dest)?;
+    Ok(data)
+}
+
+pub fn export_copy(source: &Path, dest: &Path) -> Result<(), VaultError> {
+    if !source.exists() {
+        return Err(VaultError::NotFound);
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(source, dest)?;
+    Ok(())
+}
+
 pub fn change_password(
     path: &Path,
     old_password: &str,

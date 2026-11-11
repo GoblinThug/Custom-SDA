@@ -62,7 +62,7 @@ npm run tauri android dev
 npm run build:apk
 ```
 
-Скрипт `scripts/build-apk.ps1`: sync версии, `tauri android build`, копирование в `release/Custom SDA_<version>_arm64-setup.apk`.
+Скрипт `scripts/build-apk.ps1`: sync версии, `tauri android build`, подпись **единым** `src-tauri/android/sideload.keystore` (обновление поверх без удаления), копирование в `release/Custom SDA_<version>_arm64-setup.apk`. См. [src-tauri/android/README.md](../src-tauri/android/README.md).
 
 ## Биометрия
 

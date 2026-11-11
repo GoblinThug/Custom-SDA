@@ -230,6 +230,7 @@ Copy-Item -Recurse -Force (Join-Path $root "dist\*") $assets
 Copy-Item -Force (Join-Path $root "src-tauri\tauri.conf.json") $assets
 
 & (Join-Path $root "scripts\sync-android-icons.ps1")
+& (Join-Path $root "scripts\patch-android-persistence.ps1")
 
 $androidDir = Join-Path $root "src-tauri\gen\android"
 Push-Location $androidDir
@@ -265,14 +266,11 @@ if (-not (Test-Path $env:JAVA_HOME)) {
 $stagingApk = Join-Path $env:TEMP "custom-sda-sign-staging-$([guid]::NewGuid().ToString('n')).apk"
 Copy-Item -Force $unsigned $stagingApk
 
-$androidUser = Join-Path $env:USERPROFILE ".android"
-$ks = Join-Path $androidUser "debug.keystore"
+$ks = Join-Path $root "src-tauri\android\sideload.keystore"
+$ksPass = "custom-sda-sideload"
+$ksAlias = "customsda"
 if (-not (Test-Path $ks)) {
-    New-Item -ItemType Directory -Force -Path $androidUser | Out-Null
-    & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -v -keystore $ks -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-    if ($LASTEXITCODE -ne 0) {
-        throw "keytool failed to create debug.keystore"
-    }
+    throw "Missing $ks — see src-tauri/android/README.md"
 }
 
 $apksigner = Get-ChildItem (Join-Path $env:ANDROID_HOME "build-tools") -Recurse -Filter "apksigner.bat" | Select-Object -First 1 -ExpandProperty FullName
@@ -282,7 +280,7 @@ if (-not $apksigner) {
 
 $signPrevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-$signLog = & $apksigner sign --v1-signing-enabled true --v2-signing-enabled true --ks $ks --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out $outApk $stagingApk 2>&1
+$signLog = & $apksigner sign --v1-signing-enabled true --v2-signing-enabled true --ks $ks --ks-pass "pass:$ksPass" --key-pass "pass:$ksPass" --ks-key-alias $ksAlias --out $outApk $stagingApk 2>&1
 $signExit = $LASTEXITCODE
 $ErrorActionPreference = $signPrevEap
 Remove-Item -Force $stagingApk -ErrorAction SilentlyContinue

@@ -13,6 +13,17 @@ No `TAURI_SIGNING_*` secrets, no `latest.json`, no private keys.
 3. Open the matching installer URL (`.exe` / `.AppImage` / `.dmg`) or the release page in the browser.
 4. User installs manually (same pattern as many apps that “update from GitHub” without a signed silent updater).
 
+### Android
+
+- **Проверить обновления** в футере работает на Android: ищется APK в последнем GitHub Release и открывается в браузере.
+- Установка **поверх** старой версии сохраняет vault, если **тот же ключ подписи** (`src-tauri/android/sideload.keystore`, см. [android/README.md](../src-tauri/android/README.md)).
+- `versionCode` синхронизируется из `package.json` через `npm run sync:version` (иначе Android может отказать в обновлении).
+- Старые APK с другой подписью (локальный debug, dev-сборка) нужно один раз удалить и поставить релизный APK.
+
+### iOS
+
+Проверка обновлений через GitHub APK **не поддерживается** — только ручная установка / TestFlight.
+
 ## Why not Tauri’s built-in updater?
 
 The official Tauri updater **requires** a minisign keypair to verify packages. That is by design (anti-tamper). Apps that update “without keys” usually only open a download link from Releases — they do not silently replace the binary with signature checks.
@@ -23,4 +34,4 @@ The official Tauri updater **requires** a minisign keypair to verify packages. T
 2. Push to `main` → CI builds and publishes GitHub Release assets.
 3. Installed apps see the new tag on **Check for updates** (footer).
 
-Repository default: `GoblinThug/Custom-SDA`. Tag format: `v1.0.1` matching `package.json` (synced by `npm run sync:version`).
+Repository default: `GoblinThug/Custom-SDA`. Tag format: `v1.0.2` matching `package.json` (synced by `npm run sync:version`).

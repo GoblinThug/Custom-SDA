@@ -7,7 +7,7 @@ import { APP_VERSION } from "./version";
 const GITHUB_REPO = "GoblinThug/Custom-SDA";
 
 export type UpdateCheckResult =
-  | { status: "unsupported" }
+  | { status: "unsupported"; platform: "ios" | "desktop-only" }
   | { status: "upToDate" }
   | {
       status: "available";
@@ -15,6 +15,8 @@ export type UpdateCheckResult =
       notes: string | null;
       downloadUrl: string;
       releaseUrl: string;
+      /** APK sideload — vault kept on upgrade if same signing key */
+      androidApk?: boolean;
     }
   | { status: "error"; message: string };
 
@@ -53,6 +55,15 @@ function pickAsset(assets: GhAsset[], os: string, cpu: string): GhAsset | null {
   const names = assets.map((a) => ({ a, n: a.name.toLowerCase() }));
   const prefer = (pred: (n: string) => boolean) => names.find((x) => pred(x.n))?.a ?? null;
 
+  if (os === "android") {
+    return (
+      prefer(
+        (n) =>
+          n.endsWith(".apk") &&
+          (n.includes("arm64") || n.includes("aarch64") || n.includes("setup")),
+      ) || prefer((n) => n.endsWith(".apk"))
+    );
+  }
   if (os === "windows") {
     return (
       prefer((n) => n.endsWith(".exe") && (n.includes("setup") || n.includes("nsis"))) ||
@@ -82,14 +93,40 @@ function pickAsset(assets: GhAsset[], os: string, cpu: string): GhAsset | null {
   return null;
 }
 
+function resolveOs(): string {
+  if (isMobileHost()) {
+    try {
+      const kind = type();
+      if (kind === "android" || kind === "ios") {
+        return kind;
+      }
+    } catch {
+      /* ua fallback below */
+    }
+    if (typeof navigator !== "undefined" && /android/i.test(navigator.userAgent)) {
+      return "android";
+    }
+    if (typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      return "ios";
+    }
+  }
+  try {
+    return type();
+  } catch {
+    return "windows";
+  }
+}
+
 /**
  * Public GitHub Releases — no signing keys / secrets.
- * Compares tag of latest release with the built-in app version.
+ * Desktop: installer download. Android: APK from release assets.
  */
 export async function checkAppUpdate(): Promise<UpdateCheckResult> {
-  if (isMobileHost()) {
-    return { status: "unsupported" };
+  const os = resolveOs();
+  if (os === "ios") {
+    return { status: "unsupported", platform: "ios" };
   }
+
   try {
     const res = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
@@ -112,13 +149,11 @@ export async function checkAppUpdate(): Promise<UpdateCheckResult> {
       return { status: "upToDate" };
     }
 
-    let os = "windows";
     let cpu = "x86_64";
     try {
-      os = type();
       cpu = arch();
     } catch {
-      /* browser fallback */
+      /* ignore */
     }
 
     const asset = pickAsset(release.assets ?? [], os, cpu);
@@ -128,15 +163,16 @@ export async function checkAppUpdate(): Promise<UpdateCheckResult> {
       notes: release.body ?? null,
       downloadUrl: asset?.browser_download_url ?? release.html_url,
       releaseUrl: release.html_url,
+      androidApk: os === "android",
     };
   } catch (e) {
     return { status: "error", message: String(e) };
   }
 }
 
-/** Open the installer / release page in the system browser (no private key). */
+/** Open the installer / APK / release page in the system browser. */
 export async function installAppUpdate(downloadUrl?: string): Promise<UpdateInstallResult> {
-  if (isMobileHost()) {
+  if (resolveOs() === "ios") {
     return { status: "error", message: "unsupported" };
   }
   try {

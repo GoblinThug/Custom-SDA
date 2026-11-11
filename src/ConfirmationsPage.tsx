@@ -64,6 +64,14 @@ function accountCanConfirm(a: Account | null | undefined): boolean {
   return Boolean(a?.has_session && a?.has_identity);
 }
 
+function accountNeedsReauth(a: Account | null | undefined): boolean {
+  return !a?.has_session;
+}
+
+function accountNeedsMafileImport(a: Account | null | undefined): boolean {
+  return !a?.has_identity;
+}
+
 export function ConfirmationsPage({
   lang,
   selected,
@@ -328,7 +336,7 @@ export function ConfirmationsPage({
     setMode("choice");
   }
 
-  if (!showSetup && listReady) {
+  if (mode === "auto" && accountCanConfirm(selected) && !listReady) {
     return (
       <div className="panel">
         <div className="page-head page-head--stacked">
@@ -340,10 +348,30 @@ export function ConfirmationsPage({
             <button
               type="button"
               className="ghost-btn"
-              onClick={() => setMode("choice")}
+              disabled={busy}
+              onClick={() => void loadList()}
+              title={busy ? t(lang, "loading") : t(lang, "refresh")}
+              aria-label={t(lang, "refreshList")}
             >
-              {t(lang, "confirmationsReauth")}
+              <IconRefresh />
+              {busy ? t(lang, "loading") : t(lang, "refresh")}
             </button>
+          </div>
+        </div>
+        {busy && <div className="muted empty">{t(lang, "loading")}</div>}
+      </div>
+    );
+  }
+
+  if (!showSetup && listReady) {
+    return (
+      <div className="panel">
+        <div className="page-head page-head--stacked">
+          <div className="page-head-text">
+            <h2 className="page-title">{t(lang, "confirmations")}</h2>
+            <p className="muted page-lead">{t(lang, "confirmationsLead")}</p>
+          </div>
+          <div className="row-actions confirmations-toolbar">
             <button
               type="button"
               className="ghost-btn"
@@ -695,24 +723,28 @@ export function ConfirmationsPage({
       <h2 className="page-title">{t(lang, "confirmationsSetupTitle")}</h2>
       <p className="muted">{t(lang, "confirmationsSetupLead")}</p>
       <div className="choice-grid">
-        <button className="choice-tile" onClick={() => setMode("login")}>
-          <div className="action-icon">
-            <IconLogin />
-          </div>
-          <div>
-            <div className="conf-title">{t(lang, "confirmationsReauth")}</div>
-            <div className="conf-summary">{t(lang, "confirmationsReauthHint")}</div>
-          </div>
-        </button>
-        <button className="choice-tile" onClick={() => setMode("mafile")}>
-          <div className="action-icon">
-            <IconImport />
-          </div>
-          <div>
-            <div className="conf-title">{t(lang, "confirmationsUseMafile")}</div>
-            <div className="conf-summary">{t(lang, "confirmationsUseMafileHint")}</div>
-          </div>
-        </button>
+        {accountNeedsReauth(selected) && (
+          <button className="choice-tile" onClick={() => setMode("login")}>
+            <div className="action-icon">
+              <IconLogin />
+            </div>
+            <div>
+              <div className="conf-title">{t(lang, "confirmationsReauth")}</div>
+              <div className="conf-summary">{t(lang, "confirmationsReauthHint")}</div>
+            </div>
+          </button>
+        )}
+        {accountNeedsMafileImport(selected) && (
+          <button className="choice-tile" onClick={() => setMode("mafile")}>
+            <div className="action-icon">
+              <IconImport />
+            </div>
+            <div>
+              <div className="conf-title">{t(lang, "confirmationsUseMafile")}</div>
+              <div className="conf-summary">{t(lang, "confirmationsUseMafileHint")}</div>
+            </div>
+          </button>
+        )}
       </div>
       {accountCanConfirm(selected) && (
         <button

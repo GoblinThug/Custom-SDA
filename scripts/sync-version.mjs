@@ -16,14 +16,55 @@ if (!/^\d+\.\d+\.\d+/.test(version)) {
   process.exit(1);
 }
 
+/** Tauri / Play-style: major*1_000_000 + minor*1_000 + patch */
+function semverToVersionCode(v) {
+  const [maj = 0, min = 0, pat = 0] = v.split(".").map((p) => Number.parseInt(p, 10) || 0);
+  return maj * 1_000_000 + min * 1_000 + pat;
+}
+
+const versionCode = semverToVersionCode(version);
+
 const tauriConfPath = join(root, "src-tauri", "tauri.conf.json");
 const tauriConf = JSON.parse(readFileSync(tauriConfPath, "utf8"));
+let tauriConfChanged = false;
 if (tauriConf.version !== version) {
   tauriConf.version = version;
+  tauriConfChanged = true;
+}
+if (!tauriConf.bundle) {
+  tauriConf.bundle = { active: true };
+}
+if (!tauriConf.bundle.android) {
+  tauriConf.bundle.android = { minSdkVersion: 24 };
+}
+if (tauriConf.bundle.android.versionCode !== versionCode) {
+  tauriConf.bundle.android.versionCode = versionCode;
+  tauriConfChanged = true;
+}
+if (tauriConfChanged) {
   writeFileSync(tauriConfPath, `${JSON.stringify(tauriConf, null, 2)}\n`);
-  console.log(`tauri.conf.json → ${version}`);
+  console.log(`tauri.conf.json → ${version} (versionCode ${versionCode})`);
 } else {
-  console.log(`tauri.conf.json already ${version}`);
+  console.log(`tauri.conf.json already ${version} (versionCode ${versionCode})`);
+}
+
+const androidPropsPath = join(
+  root,
+  "src-tauri",
+  "gen",
+  "android",
+  "app",
+  "tauri.properties",
+);
+if (existsSync(androidPropsPath)) {
+  let props = readFileSync(androidPropsPath, "utf8");
+  const nextProps = props
+    .replace(/^tauri\.android\.versionName=.*$/m, `tauri.android.versionName=${version}`)
+    .replace(/^tauri\.android\.versionCode=.*$/m, `tauri.android.versionCode=${versionCode}`);
+  if (nextProps !== props) {
+    writeFileSync(androidPropsPath, nextProps);
+    console.log(`tauri.properties → ${version} (${versionCode})`);
+  }
 }
 
 const cargoTomlPath = join(root, "src-tauri", "Cargo.toml");

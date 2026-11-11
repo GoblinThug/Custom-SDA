@@ -51,6 +51,8 @@ pub fn run() {
             commands::vault_wipe,
             commands::vault_change_password,
             commands::vault_verify_password,
+            commands::vault_export,
+            commands::vault_import,
             commands::accounts_list,
             commands::account_select,
             commands::account_remove,

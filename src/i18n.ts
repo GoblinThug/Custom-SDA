@@ -10,7 +10,7 @@ const dict = {
     unlockTitle: "Разблокировать",
     createTitle: "Создать хранилище",
     unlockHint:
-      "Введите пароль шифрования, чтобы открыть локальное хранилище.",
+      "На устройстве найдено сохранённое хранилище со всеми аккаунтами. Введите прежний пароль шифрования или сбросьте и начните заново.",
     createHint:
       "Все данные аккаунтов будут храниться только локально в зашифрованном виде. Запомните пароль — восстановить его нельзя.",
     password: "Пароль",
@@ -24,8 +24,12 @@ const dict = {
     noEvents: "Пока нет событий",
     checkUpdates: "Проверить обновления",
     updateAvailable: "Доступна версия {version}. Открыть загрузку с GitHub?",
+    updateAvailableAndroid:
+      "Доступна версия {version}. Скачать APK? Установите поверх текущей — vault сохранится (нужна та же подпись релиза).",
     updateUpToDate: "У вас актуальная версия",
     updateUnsupported: "Проверка обновлений доступна на Windows, Linux и macOS",
+    updateUnsupportedIos:
+      "На iOS обновление через GitHub APK недоступно — только сборка с Mac или TestFlight",
     updateChecking: "Проверка обновлений…",
     updateInstalling: "Открываю страницу загрузки…",
     updateFailed: "Не удалось проверить обновления",
@@ -99,7 +103,24 @@ const dict = {
     autoLock: "Автоблокировка (сек, 0 = выкл)",
     encryptionSection: "Безопасность",
     encryptionHint:
-      "Хранилище всегда зашифровано (Argon2id + AES-256-GCM). Данные не покидают ваш ПК.",
+      "Хранилище всегда зашифровано (Argon2id + AES-256-GCM). Данные не покидают устройство. Резервная копия — зашифрованный файл vault.csda.",
+    vaultBackupSection: "Резервная копия",
+    vaultBackupHint:
+      "Экспорт сохраняет все аккаунты в один файл. Импорт заменяет текущее хранилище — нужен пароль от копии.",
+    vaultBackupExport: "Экспортировать хранилище",
+    vaultBackupImportBtn: "Импортировать",
+    vaultBackupPick: "Выбрать файл",
+    vaultBackupFile: "Файл копии",
+    vaultBackupNoFile: "Файл не выбран",
+    vaultBackupPasswordLabel: "Пароль от резервной копии",
+    vaultBackupPickFirst: "Сначала выберите файл резервной копии",
+    vaultBackupExportOk: "Резервная копия сохранена",
+    vaultImportOk: "Хранилище восстановлено",
+    vaultBackupImportTitle: "Восстановить из копии",
+    vaultBackupImportLead:
+      "Выберите файл резервной копии (.csda), экспортированный из Custom SDA, и введите пароль шифрования.",
+    vaultBackupImportReplace:
+      "Текущее хранилище будет полностью заменено данными из файла. Продолжить?",
     currentPassword: "Текущий пароль",
     newPassword: "Новый пароль",
     changePassword: "Сменить пароль",
@@ -245,6 +266,9 @@ const dict = {
       "На другом устройстве: «Устройство» → «Поделиться» → создайте QR, затем отсканируйте здесь.",
     mobileSetupFresh: "Настроить с нуля",
     mobileSetupFreshHint: "Импорт .maFile или вход через Steam.",
+    mobileSetupBackup: "Восстановить из файла",
+    mobileSetupBackupHint:
+      "Если вы экспортировали хранилище раньше — импортируйте .csda с другого устройства.",
     mobileVaultCreateQr:
       "QR принят. Придумайте пароль — он зашифрует аккаунт на этом устройстве.",
     mobileVaultCreateFresh:
@@ -261,6 +285,7 @@ const dict = {
     bioEnabled: "Биометрия включена",
     bioUnavailable: "Биометрия недоступна на этом устройстве",
     bioFailed: "Не удалось подтвердить биометрию",
+    bioSection: "Биометрия",
     bioSettingsHint:
       "Вход по отпечатку или Face ID после разблокировки паролем. Для включения введите пароль хранилища.",
     bioSettingsOn: "Включено",
@@ -277,7 +302,8 @@ const dict = {
     brand: "Steam Desktop Authenticator",
     unlockTitle: "Unlock",
     createTitle: "Create vault",
-    unlockHint: "Enter your encryption password to unlock the local vault.",
+    unlockHint:
+      "A saved vault with your accounts was found on this device. Enter your encryption password or reset and start over.",
     createHint:
       "Account data stays encrypted on this device only. Remember the password — it cannot be recovered.",
     password: "Password",
@@ -291,8 +317,12 @@ const dict = {
     noEvents: "No events yet",
     checkUpdates: "Check for updates",
     updateAvailable: "Version {version} is available. Open the GitHub download?",
+    updateAvailableAndroid:
+      "Version {version} is available. Download the APK? Install over the existing app to keep your vault (same release signing key required).",
     updateUpToDate: "You're on the latest version",
     updateUnsupported: "Update check is available on Windows, Linux, and macOS",
+    updateUnsupportedIos:
+      "On iOS, GitHub APK updates are not available — use a Mac build or TestFlight",
     updateChecking: "Checking for updates…",
     updateInstalling: "Opening download…",
     updateFailed: "Could not check for updates",
@@ -366,7 +396,24 @@ const dict = {
     autoLock: "Auto-lock (sec, 0 = off)",
     encryptionSection: "Security",
     encryptionHint:
-      "The vault is always encrypted (Argon2id + AES-256-GCM). Data never leaves your PC.",
+      "The vault is always encrypted (Argon2id + AES-256-GCM). Data stays on your device. Backups are encrypted vault.csda files.",
+    vaultBackupSection: "Backup",
+    vaultBackupHint:
+      "Export saves all accounts to one file. Import replaces the current vault — you need the backup password.",
+    vaultBackupExport: "Export vault",
+    vaultBackupImportBtn: "Import",
+    vaultBackupPick: "Choose file",
+    vaultBackupFile: "Backup file",
+    vaultBackupNoFile: "No file selected",
+    vaultBackupPasswordLabel: "Backup encryption password",
+    vaultBackupPickFirst: "Select a backup file first",
+    vaultBackupExportOk: "Backup saved",
+    vaultImportOk: "Vault restored",
+    vaultBackupImportTitle: "Restore from backup",
+    vaultBackupImportLead:
+      "Choose a backup file (.csda) exported from Custom SDA and enter its encryption password.",
+    vaultBackupImportReplace:
+      "The current vault will be fully replaced with the backup. Continue?",
     currentPassword: "Current password",
     newPassword: "New password",
     changePassword: "Change password",
@@ -511,6 +558,9 @@ const dict = {
       "On the other device: Device → Share → create a QR, then scan it here.",
     mobileSetupFresh: "Set up from scratch",
     mobileSetupFreshHint: "Import a .maFile or sign in with Steam.",
+    mobileSetupBackup: "Restore from file",
+    mobileSetupBackupHint:
+      "If you exported a vault before, import the .csda file from another device.",
     mobileVaultCreateQr:
       "QR captured. Choose a password to encrypt the account on this device.",
     mobileVaultCreateFresh:
@@ -527,6 +577,7 @@ const dict = {
     bioEnabled: "Biometrics enabled",
     bioUnavailable: "Biometrics are unavailable on this device",
     bioFailed: "Biometric confirmation failed",
+    bioSection: "Biometrics",
     bioSettingsHint:
       "Unlock with fingerprint or Face ID after you have set a vault password.",
     bioSettingsOn: "On",
