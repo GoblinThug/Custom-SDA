@@ -1119,15 +1119,16 @@ input[type="password"]::-ms-clear {
 .code-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 16px;
   min-width: 0;
 }
 
 .code-digits-wrap {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
+  padding-right: 4px;
 }
 
 .code-digits {
@@ -1137,6 +1138,7 @@ input[type="password"]::-ms-clear {
   letter-spacing: 0.22em;
   line-height: 1.1;
   margin-left: 0.1em;
+  padding-right: 0.12em;
   white-space: nowrap;
   width: max-content;
   max-width: 100%;

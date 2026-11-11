@@ -91,6 +91,14 @@ pub fn vault_export(state: State<'_, Arc<AppState>>, dest_path: String) -> Resul
 }
 
 #[tauri::command]
+pub fn vault_export_contents(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    if !state.is_unlocked() {
+        return Err("хранилище заблокировано".into());
+    }
+    vault::export_contents(&state.vault_path).map_err(map_vault_err)
+}
+
+#[tauri::command]
 pub fn vault_import(
     state: State<'_, Arc<AppState>>,
     source_path: String,
@@ -101,13 +109,38 @@ pub fn vault_import(
     }
     let source = std::path::Path::new(&source_path);
     let data = vault::install_backup(source, &state.vault_path, &password).map_err(map_vault_err)?;
+    apply_vault_import(&state, password, data)?;
+    vault_status(state)
+}
+
+#[tauri::command]
+pub fn vault_import_contents(
+    state: State<'_, Arc<AppState>>,
+    contents: String,
+    password: String,
+) -> Result<VaultStatusDto, String> {
+    if password.len() < 6 {
+        return Err("пароль должен быть не короче 6 символов".into());
+    }
+    let data =
+        vault::install_backup_from_contents(&state.vault_path, &contents, &password)
+            .map_err(map_vault_err)?;
+    apply_vault_import(&state, password, data)?;
+    vault_status(state)
+}
+
+fn apply_vault_import(
+    state: &State<'_, Arc<AppState>>,
+    password: String,
+    data: vault::VaultData,
+) -> Result<(), String> {
     *state.steam_setup.lock() = None;
     *state.inner.lock() = Some(UnlockedVault {
         password: Zeroizing::new(password),
         data,
     });
     state.push_event("encryption", "Хранилище восстановлено из резервной копии", true)?;
-    vault_status(state)
+    Ok(())
 }
 
 #[tauri::command]

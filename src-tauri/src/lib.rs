@@ -17,6 +17,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_os::init());
 
@@ -52,7 +53,9 @@ pub fn run() {
             commands::vault_change_password,
             commands::vault_verify_password,
             commands::vault_export,
+            commands::vault_export_contents,
             commands::vault_import,
+            commands::vault_import_contents,
             commands::accounts_list,
             commands::account_select,
             commands::account_remove,

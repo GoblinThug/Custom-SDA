@@ -6,6 +6,16 @@
   "windows": ["main"],
   "permissions": [
     "biometric:default",
-    "biometric:allow-biometric-cipher"
+    "biometric:allow-biometric-cipher",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-download-read-recursive",
+    "fs:allow-download-write-recursive",
+    "fs:allow-document-read-recursive",
+    "fs:allow-document-write-recursive",
+    "fs:allow-home-read-recursive",
+    "fs:allow-home-write-recursive"
   ]
 }

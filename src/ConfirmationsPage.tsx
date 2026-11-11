@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { GuardCodeDigits } from "./GuardCodeDigits";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Account,
@@ -21,44 +22,6 @@ import {
 } from "./icons";
 
 type Mode = "auto" | "choice" | "mafile" | "login" | "new_setup";
-
-function formatCode(code: string) {
-  return code.split("").join(" ");
-}
-
-function fitCodeFontSize(wrap: HTMLElement, text: HTMLElement) {
-  let size = 42;
-  text.style.fontSize = `${size}px`;
-  while (size > 18 && text.scrollWidth > wrap.clientWidth) {
-    size -= 1;
-    text.style.fontSize = `${size}px`;
-  }
-}
-
-function GuardCodeDigits({ code }: { code: string }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLDivElement>(null);
-  const display = formatCode(code);
-
-  useLayoutEffect(() => {
-    const wrap = wrapRef.current;
-    const text = textRef.current;
-    if (!wrap || !text) return;
-    const fit = () => fitCodeFontSize(wrap, text);
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(wrap);
-    return () => observer.disconnect();
-  }, [display]);
-
-  return (
-    <div className="code-digits-wrap" ref={wrapRef}>
-      <div className="code-digits" ref={textRef}>
-        {display}
-      </div>
-    </div>
-  );
-}
 
 function accountCanConfirm(a: Account | null | undefined): boolean {
   return Boolean(a?.has_session && a?.has_identity);

@@ -1,8 +1,8 @@
 import { FormEvent, useState } from "react";
 import { IconImport } from "./icons";
 import { Lang, t } from "./i18n";
-import { VaultStatus, api } from "./api";
-import { pickVaultBackupFile } from "./vaultBackup";
+import { VaultStatus } from "./api";
+import { importVaultFromPickedPath, pickVaultBackupFile } from "./vaultBackup";
 import { notifyError, showToast } from "./toast";
 
 type PasswordFieldProps = {
@@ -69,7 +69,10 @@ export function VaultBackupPanel({
     }
     setBusy(true);
     try {
-      const next = await api.vaultImport(backupPath, password);
+      const next = await importVaultFromPickedPath(password, backupPath);
+      if (!next) {
+        return;
+      }
       showToast(t(lang, "vaultImportOk"), "success");
       onSuccess(next);
     } catch (err) {

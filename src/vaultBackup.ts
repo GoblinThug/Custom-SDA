@@ -1,4 +1,7 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { api } from "./api";
+import { isMobileHost } from "./platform";
 
 const VAULT_BACKUP_FILTER = {
   name: "Custom SDA vault",
@@ -25,4 +28,32 @@ export async function pickVaultBackupSavePath(): Promise<string | null> {
     return null;
   }
   return path;
+}
+
+/** Export vault to a user-picked path (FS plugin on mobile, native copy on desktop). */
+export async function exportVaultToPickedPath(): Promise<boolean> {
+  const path = await pickVaultBackupSavePath();
+  if (!path) {
+    return false;
+  }
+  if (isMobileHost()) {
+    const contents = await api.vaultExportContents();
+    await writeTextFile(path, contents);
+  } else {
+    await api.vaultExport(path);
+  }
+  return true;
+}
+
+/** Import vault from a user-picked backup file. */
+export async function importVaultFromPickedPath(password: string, sourcePath?: string) {
+  const path = sourcePath ?? (await pickVaultBackupFile());
+  if (!path) {
+    return null;
+  }
+  if (isMobileHost()) {
+    const contents = await readTextFile(path);
+    return api.vaultImportContents(contents, password);
+  }
+  return api.vaultImport(path, password);
 }

@@ -2,7 +2,6 @@ import {
   FormEvent,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -11,7 +10,8 @@ import {
 } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { VaultBackupPanel } from "./VaultBackupPanel";
-import { pickVaultBackupSavePath } from "./vaultBackup";
+import { exportVaultToPickedPath } from "./vaultBackup";
+import { GuardCodeDigits } from "./GuardCodeDigits";
 import {
   Account,
   api,
@@ -93,61 +93,6 @@ const APP_TITLE = "Steam Desktop Authenticator";
 
 type Tab = "home" | "keys" | "confirmations" | "mobile" | "settings";
 type OnboardMode = "choice" | "mafile" | "steam" | null;
-
-function formatCode(code: string) {
-  return code.split("").join(" ");
-}
-
-const CODE_FONT_MAX = 42;
-const CODE_FONT_MIN = 17;
-
-function fitCodeFontSize(wrap: HTMLElement, text: HTMLElement) {
-  text.style.fontSize = `${CODE_FONT_MAX}px`;
-  if (wrap.clientWidth <= 0 || text.scrollWidth <= wrap.clientWidth) {
-    return;
-  }
-  let lo = CODE_FONT_MIN;
-  let hi = CODE_FONT_MAX;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    text.style.fontSize = `${mid}px`;
-    if (text.scrollWidth > wrap.clientWidth) {
-      hi = mid - 1;
-    } else {
-      lo = mid;
-    }
-  }
-  text.style.fontSize = `${lo}px`;
-}
-
-function GuardCodeDigits({ code }: { code: string }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLDivElement>(null);
-  const display = formatCode(code);
-
-  useLayoutEffect(() => {
-    const wrap = wrapRef.current;
-    const text = textRef.current;
-    if (!wrap || !text) {
-      return;
-    }
-
-    const fit = () => fitCodeFontSize(wrap, text);
-
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(wrap);
-    return () => observer.disconnect();
-  }, [display]);
-
-  return (
-    <div className="code-digits-wrap" ref={wrapRef}>
-      <div className="code-digits" ref={textRef}>
-        {display}
-      </div>
-    </div>
-  );
-}
 
 function PasswordField({
   value,
@@ -1856,11 +1801,10 @@ function SettingsPage({
             onError(null);
             setBackupBusy(true);
             try {
-              const path = await pickVaultBackupSavePath();
-              if (!path) {
+              const ok = await exportVaultToPickedPath();
+              if (!ok) {
                 return;
               }
-              await api.vaultExport(path);
               showToast(t(uiLang, "vaultBackupExportOk"), "success");
             } catch (e) {
               onError(String(e));

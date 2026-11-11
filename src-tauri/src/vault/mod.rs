@@ -211,6 +211,26 @@ pub fn install_backup(source: &Path, dest: &Path, password: &str) -> Result<Vaul
     Ok(data)
 }
 
+pub fn export_contents(source: &Path) -> Result<String, VaultError> {
+    if !source.exists() {
+        return Err(VaultError::NotFound);
+    }
+    fs::read_to_string(source).map_err(VaultError::from)
+}
+
+/// Import from backup JSON/text via a temp file in the vault directory (writable on mobile).
+pub fn install_backup_from_contents(
+    dest: &Path,
+    contents: &str,
+    password: &str,
+) -> Result<VaultData, VaultError> {
+    let temp = dest.with_extension("csda.import-tmp");
+    fs::write(&temp, contents)?;
+    let result = install_backup(&temp, dest, password);
+    let _ = fs::remove_file(&temp);
+    result
+}
+
 pub fn export_copy(source: &Path, dest: &Path) -> Result<(), VaultError> {
     if !source.exists() {
         return Err(VaultError::NotFound);
